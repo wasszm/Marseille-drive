@@ -141,7 +141,47 @@ function travelDirection(m,pos){
   return angleDiff(pos.heading,m.roadBearing)<=90?"forward":"backward"
 }
 function signedLateralM(pos,nearest,rb){const d=haversineM(pos,nearest),b=bearing(nearest,pos);return Math.sin(rad(((b-rb+540)%360)-180))*d}
-function estimateLane(m,pos){const dir=travelDirection(m,pos),total=laneCount(m.road.tags,dir),rb=dir==="forward"?m.roadBearing:(m.roadBearing+180)%360,acc=Number.isFinite(pos.accuracy)?pos.accuracy:999,headErr=Number.isFinite(pos.heading)?angleDiff(pos.heading,rb):90,confidence=clamp(Math.round(100-Math.min(m.distance,40)*1.4-Math.min(acc,40)*2.35-Math.min(headErr,90)*.25),0,100),hasTurnLanes=Boolean(directionalLaneValue(m.road.tags,"turn:lanes",dir)),base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir)};if(!total)return{...base,index:null,reason:"Nombre de voies absent dans OSM"};if(acc>5.5||confidence<62)return{...base,index:null,reason:`GPS ±${Math.round(acc)} m : pas assez précis pour une voie`};const off=signedLateralM(pos,m.nearest,rb),ratio=clamp(off/(total*CFG.laneWidthM),-.499,.499),index=clamp(Math.floor((ratio+.5)*total)+1,1,total);return{...base,index,reason:"Estimation GPS + axe OSM"}}
+function parseLaneWidths(tags,dir,total){
+  const raw=directionalLaneValue(tags,"width:lanes",dir),vals=pipe(raw).map(v=>parseFloat(String(v).replace(",",".")));
+  if(vals.length===total&&vals.every(v=>Number.isFinite(v)&&v>=2&&v<=5.5))return vals;
+  return Array.from({length:total},()=>CFG.laneWidthM)
+}
+function laneGeometry(tags,dir,total){
+  if(!total)return null;
+  const widths=parseLaneWidths(tags,dir,total),sum=widths.reduce((a,b)=>a+b,0),oneway=["yes","1","true","-1"].includes(String(tags.oneway||"").toLowerCase());
+  let start=-sum/2,quality="direct";
+  if(!oneway){
+    const full=positiveInt(tags.lanes),opp=positiveInt(dir==="forward"?tags["lanes:backward"]:tags["lanes:forward"]);
+    let totalRoad=full;
+    if(!totalRoad&&opp)totalRoad=total+opp;
+    if(!totalRoad){totalRoad=total*2;quality="inferred"}
+    const roadWidth=totalRoad*CFG.laneWidthM;
+    start=roadWidth/2-sum;
+    if(!positiveInt(dir==="forward"?tags["lanes:forward"]:tags["lanes:backward"]))quality="inferred"
+  }
+  const bounds=[start];let x=start;for(const w of widths){x+=w;bounds.push(x)}
+  return{widths,bounds,start,end:x,quality,oneway}
+}
+function laneFromOffset(geom,off){
+  if(!geom)return null;
+  const margin=.75;
+  if(off<geom.start-margin||off>geom.end+margin)return null;
+  const x=clamp(off,geom.start+.01,geom.end-.01);
+  for(let i=0;i<geom.widths.length;i++)if(x>=geom.bounds[i]&&x<geom.bounds[i+1])return i+1;
+  return geom.widths.length
+}
+function estimateLane(m,pos){
+  const dir=travelDirection(m,pos),total=laneCount(m.road.tags,dir),rb=dir==="forward"?m.roadBearing:(m.roadBearing+180)%360,acc=Number.isFinite(pos.accuracy)?pos.accuracy:999,headErr=Number.isFinite(pos.heading)?angleDiff(pos.heading,rb):90;
+  const mapQ=Number.isFinite(m.quality)?m.quality:50,confidence=clamp(Math.round(92-Math.min(m.distance,40)*1.1-Math.min(acc,40)*2.25-Math.min(headErr,90)*.22+(mapQ-50)*.18),0,100);
+  const hasTurnLanes=Boolean(directionalLaneValue(m.road.tags,"turn:lanes",dir)),geom=laneGeometry(m.road.tags,dir,total);
+  const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),geometry:geom};
+  if(!total)return{...base,index:null,reason:"Nombre de voies absent dans OSM"};
+  if(acc>5.5||confidence<62)return{...base,index:null,reason:`GPS ±${Math.round(acc)} m : pas assez précis pour une voie`};
+  const off=signedLateralM(pos,m.nearest,rb),index=laneFromOffset(geom,off);
+  if(!index)return{...base,index:null,lateralM:off,reason:"Position latérale incompatible avec la géométrie des voies"};
+  const penalty=geom?.quality==="inferred"?8:0;
+  return{...base,index,lateralM:off,confidence:clamp(confidence-penalty,0,100),reason:geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM"}
+}
 function stabilizeLane(lane,m){
   const f=S.laneFilter,roadId=m?.road?.id||null;
   if(f.roadId!==roadId){f.roadId=roadId;f.index=null;f.candidate=null;f.hits=0}
