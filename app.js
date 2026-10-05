@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
@@ -408,7 +408,14 @@ function advanceFusion(nowMs=Date.now()){
     f.along=clamp(f.along+ds,0,S.routeLengthM||Infinity);const rp=fusedRoutePosition(f.along,f.lateralM);if(rp){f.position={lat:rp.lat,lon:rp.lon};f.heading=rp.heading}
   }else if(ds>.02)f.position=destinationPoint(f.position,f.heading,ds);
   if(age>1200)f.mode="PRÉDICTIF";
-  f.quality=Math.max(18,f.quality-dt*(age>2500?3.5:1.2))
+  f.quality=Math.max(18,f.quality-dt*(age>2500?3.5:1.2));
+  if(age>1500&&S.laneBelief.confidence>0){
+    S.laneBelief.confidence=Math.max(0,S.laneBelief.confidence-dt*(age>3500?6:2));
+    if(S.lastLane)S.lastLane={...S.lastLane,confidence:Math.round(S.laneBelief.confidence),reason:"Confiance en décroissance · GPS non rafraîchi"}
+  }
+  if(age>5200){
+    S.laneBelief.index=null;if(S.lastLane)S.lastLane={...S.lastLane,index:null,confidence:Math.min(S.lastLane.confidence,28),reason:"Voie non confirmée · GPS trop ancien"}
+  }
 }
 function fusionPosition(){
   const f=S.fusion;if(!f.position)return S.gps;
@@ -861,6 +868,11 @@ function currentDrawState(){
 }
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);
+  if(!S.demo&&now-S.lastHudAt>280){
+    S.lastHudAt=now;const fp=fusionPosition();updateFusionBadge(fp,effectiveMatch());updateBeliefHud(S.lastLane);
+    if(S.fusion.mode==="PRÉDICTIF"||S.fusion.mode==="GPS PERDU")$("source").textContent=S.fusion.mode;
+    if(S.lastLane)$("confidence").textContent=`${Math.round(S.lastLane.confidence||0)}%`
+  }
   if(S.view==="drive"&&!S.demo&&now-S.lastRenderAt>50){S.lastRenderAt=now;draw3D(currentDrawState())}
   S.renderRaf=requestAnimationFrame(renderLoop)
 }
