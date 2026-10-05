@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#071015">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="./manifest.webmanifest?v=5">
-<link rel="apple-touch-icon" href="./icon.svg?v=5">
+<link rel="manifest" href="./manifest.webmanifest?v=6">
+<link rel="apple-touch-icon" href="./icon.svg?v=6">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="./styles.css?v=5.0.0">
-<title>Marseille Drive — Beta 5</title>
+<link rel="stylesheet" href="./styles.css?v=6.0.0">
+<title>Marseille Drive — Beta 6</title>
 </head>
 <body>
 <div id="map"></div>
@@ -18,7 +18,7 @@
 <div id="car" aria-hidden="true"></div>
 <div class="hud">
   <section class="card topbar">
-    <div><div class="brand">MARSEILLE DRIVE</div><div id="modeLabel" class="muted">BETA 5 · CARTE RÉELLE</div></div>
+    <div><div class="brand">MARSEILLE DRIVE</div><div id="modeLabel" class="muted">BETA 6 · CARTE RÉELLE</div></div>
     <div class="speedbox"><span id="speed">0</span><small> km/h</small></div>
   </section>
   <section class="card metrics">
@@ -34,16 +34,23 @@
     <button id="visionBtn" class="card tool">📷<span>Vision</span></button>
     <button id="demoBtn" class="card tool">▶<span>Démo</span></button>
   </nav>
-  <div id="status" class="card status">Initialisation…</div>\n  <div id="limitBadge" class="speed-limit hidden">—</div>
+  <div id="status" class="card status">Initialisation…</div>
+  <div id="limitBadge" class="speed-limit hidden">—</div>
+  <div id="envBadge" class="env-badge">URBAIN —</div>
   <section id="routeCard" class="card route-card">
     <div class="route-head">
       <div><div class="eyebrow">ITINÉRAIRE</div><div id="routeTitle" class="route-title">Touchez la carte pour choisir une destination</div></div>
-      <button id="clearRoute" class="clear-btn" hidden>✕</button>
+      <div class="route-actions"><button id="streetRef" class="street-btn" title="Ouvrir Street View">360°</button><button id="clearRoute" class="clear-btn" hidden>✕</button></div>
     </div>
     <div id="routeMeta" class="muted">Active d’abord le GPS.</div>
     <div id="progressWrap" class="progress-wrap hidden"><div id="progressBar" class="progress-bar"></div></div>
   </section>
-  <section id="junctionAssist" class="card junction-assist hidden">\n    <div class="eyebrow">ASSISTANT CARREFOUR</div>\n    <div id="junctionText" class="junction-text">Prochaine manœuvre</div>\n    <div id="junctionLanes" class="junction-lanes"></div>\n  </section>\n  <section class="card nav-card">
+  <section id="junctionAssist" class="card junction-assist hidden">
+    <div class="eyebrow">ASSISTANT CARREFOUR</div>
+    <div id="junctionText" class="junction-text">Prochaine manœuvre</div>
+    <div id="junctionLanes" class="junction-lanes"></div>
+  </section>
+  <section class="card nav-card">
     <div class="eyebrow">NAVIGATION</div>
     <div id="instruction" class="instruction">Prêt pour le test</div>
     <div id="detail" class="detail">Active le GPS ou lance la démonstration.</div>
@@ -51,7 +58,7 @@
   </section>
 </div>
 <section id="permission" class="card permission">
-  <div class="permission-title">BETA 5 prête</div>
+  <div class="permission-title">BETA 6 prête</div>
   <p>Active le GPS. La carte suit ta position, charge les routes proches et peut recalculer automatiquement si tu quittes l’itinéraire.</p>
   <div class="permission-actions"><button id="allowGps" class="primary">Activer le GPS</button><button id="later">Plus tard</button></div>
 </section>
@@ -60,6 +67,6 @@
   <div class="vision-footer"><span>Caméra locale · aucune image envoyée</span><button id="closeVision">Fermer</button></div>
 </section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./app.js?v=5.0.0"></script>
+<script src="./app.js?v=6.0.0"></script>
 </body>
 </html>
