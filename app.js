@@ -237,7 +237,7 @@ function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav
   $("diagHeading").textContent=pos?`${Math.round(pos.heading||0)}°`:"—";
   $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
   $("diagRoute").textContent=nav&&Number.isFinite(nav.offRoute)?`${nav.offRoute.toFixed(1)} m écart`:(S.route?"sur route":"—");
-  $("diagEnv").textContent=`${S.environment.length} objets`;
+  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% exp.`:"—";
 }
 function recordSample(){
   if(!S.recording||!S.gps)return;
@@ -249,7 +249,7 @@ function recordSample(){
     raw:S.rawGps?{lat:S.rawGps.lat,lon:S.rawGps.lon}:null,
     match:m?{distanceM:+m.distance.toFixed(2),road:roadName(m.road),wayId:m.road.id}:null,
     lane:l?{index:l.index,total:l.total,confidence:l.confidence}:null,
-    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null
+    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,vision:S.visionCue?{confidence:S.visionCue.confidence}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
   $("exportBtn").disabled=S.track.length===0
