@@ -193,7 +193,7 @@ async function loadEnvironmentData(lat,lon){
 function signedAngle(from,to){return((to-from+540)%360)-180}
 function visibleEnvironment(pos,heading,maxM=260){
   if(!pos||!S.environment.length)return[];
-  const key=`${Math.round(pos.lat*1e5)}:${Math.round(pos.lon*1e5)}:${Math.round((heading||0)/4)}:${S.environment.length}`;
+  const key=`${Math.round(pos.lat*1e5)}:${Math.round(pos.lon*1e5)}:${Math.round((heading||0)/4)}:${S.environment.length}:${S.scene3d.objectLimit}`;
   let base=S.sceneEnvCache?.key===key?S.sceneEnvCache.list:null;
   if(!base){
     const out=[];
@@ -1079,7 +1079,7 @@ function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav
   $("diagHeading").textContent=pos?`${Math.round(pos.heading||0)}°`:"—";
   $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%${S.laneTransition.state!=="STABLE"?` · ${S.laneTransition.state}`:""}`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
   $("diagRoute").textContent=nav&&Number.isFinite(nav.offRoute)?`${nav.offRoute.toFixed(1)} m écart`:(S.route?"sur route":"—");
-  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}${S.visionCalibration.active?` · CAL ${visionCalibrationBias()>=0?"+":""}${visionCalibrationBias().toFixed(1)}m`:""}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";$("diagVisionSignal").textContent=S.visionSignalCue?`${S.visionSignalCue.type} ? · ${S.visionSignalCue.confidence}% EXP`:"—";renderTruthButtons(lane);
+  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}${S.visionCalibration.active?` · CAL ${visionCalibrationBias()>=0?"+":""}${visionCalibrationBias().toFixed(1)}m`:""}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";$("diagVisionSignal").textContent=S.visionSignalCue?`${S.visionSignalCue.type} ? · ${S.visionSignalCue.confidence}% EXP`:"—";$("diag3d").textContent=`${S.scene3d.quality} · ${S.scene3d.avgMs.toFixed(1)} ms · ${S.scene3d.objectLimit} obj`;renderTruthButtons(lane);
 }
 function recordSample(){
   if(!S.recording||!S.gps)return;
@@ -1561,7 +1561,7 @@ function drawEnvironment(c,w,h,hz,heading){
   const day=isDayScene(),pos=S.demo?null:scenePosition();if(!pos||!S.environment.length){drawFallbackCity(c,w,h,hz);return}
   const objs=visibleEnvironment(pos,heading);let labels=0;
   for(const o of objs){
-    if(o.kind==="crossing")continue;
+    if(["crossing","sign","stop","give_way","bollard","bench","hydrant","calming","hedge","barrier"].includes(o.kind))continue;
     const p=perspectiveEnvPoint(o.side,o.forward,w,h,hz);if(!p)continue;
     if(o.kind==="green"||o.kind==="water"){
       if(o.geometry&&drawGroundArea(c,o,pos,heading,w,h,hz,day))continue;
