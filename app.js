@@ -91,6 +91,11 @@ function directionalLaneValue(tags,key,dir){
 }
 function laneTurns(tags,dir){const a=pipe(directionalLaneValue(tags,"turn:lanes",dir));return a.length?a:Array.from({length:Math.max(1,laneCount(tags,dir))},()=>"through")}
 function laneChanges(tags,dir){return pipe(directionalLaneValue(tags,"change:lanes",dir))}
+function laneDestinations(tags,dir,total){
+  const names=pipe(directionalLaneValue(tags,"destination:lanes",dir)),refs=pipe(directionalLaneValue(tags,"destination:ref:lanes",dir)),out=[];
+  for(let i=0;i<total;i++){const a=names[i]||"",b=refs[i]||"";out.push([b,a].filter(Boolean).join(" · ").slice(0,28))}
+  return out
+}
 function laneAccess(tags,dir,total){
   if(!total)return[];
   const keys=["motor_vehicle:lanes","vehicle:lanes","access:lanes"],blocked=new Set(["no","private","customers","delivery","agricultural","forestry"]);
@@ -118,14 +123,16 @@ function updateJunctionAssist(lane,nav){
   const panel=$("junctionAssist");if(!nav||nav.arrived||!Number.isFinite(nav.distance)||nav.distance>650){panel.classList.add("hidden");return}
   panel.classList.remove("hidden");const plan=routeLaneStrategy(lane,nav),suffix=plan.source&&plan.source!=="OSM"?` · ${plan.source}`:"";
   $("junctionText").textContent=`${nav.instruction} · ${Math.max(0,Math.round(nav.distance))} m${suffix}`;
-  const lanes=$("junctionLanes"),hint=plan.hint&&plan.hint.total===lane.total?plan.hint:null;
+  const lanes=$("junctionLanes"),hint=plan.hint&&plan.hint.total===lane.total?plan.hint:null;lanes.replaceChildren();
   if(lane.total&&(lane.hasTurnLanes||hint)){
-    const good=plan.compatible||[];
-    lanes.innerHTML=Array.from({length:lane.total},(_,i)=>{
-      const idx=i+1,raw=lane.turns?.[i]||hint?.lanes?.[i]?.indications?.join(";")||"through",restricted=lane.accessible?.[i]===false;
-      return `<span class="${good.includes(idx)?"recommended":""} ${restricted?"restricted":""}">${turnGlyph(raw)}</span>`
-    }).join("")
-  }else lanes.innerHTML='<small>Voies directionnelles non renseignées sur cette section</small>'
+    for(let i=0;i<lane.total;i++){
+      const idx=i+1,raw=lane.turns?.[i]||hint?.lanes?.[i]?.indications?.join(";")||"through",span=document.createElement("span");
+      if((plan.compatible||[]).includes(idx))span.classList.add("recommended");if(lane.accessible?.[i]===false)span.classList.add("restricted");
+      const glyph=document.createElement("b");glyph.textContent=turnGlyph(raw);span.appendChild(glyph);
+      const dest=lane.destinations?.[i];if(dest){const small=document.createElement("small");small.textContent=dest;span.appendChild(small)}
+      lanes.appendChild(span)
+    }
+  }else{const small=document.createElement("small");small.textContent="Voies directionnelles non renseignées sur cette section";lanes.appendChild(small)}
 }
 function envHeight(tags){const h=parseFloat(String(tags?.height||"").replace(",",".") );if(Number.isFinite(h)&&h>1)return clamp(h,3,60);const levels=parseFloat(tags?.["building:levels"]);return clamp(Number.isFinite(levels)&&levels>0?levels*3.1:10,3,45)}
 function envKind(tags){
@@ -393,7 +400,7 @@ function estimateLane(m,pos){
   const dir=travelDirection(m,pos),total=laneCount(m.road.tags,dir),rb=dir==="forward"?m.roadBearing:(m.roadBearing+180)%360,acc=Number.isFinite(pos.accuracy)?pos.accuracy:999,headErr=Number.isFinite(pos.heading)?angleDiff(pos.heading,rb):90;
   const mapQ=Number.isFinite(m.quality)?m.quality:50,confidence=clamp(Math.round(92-Math.min(m.distance,40)*1.1-Math.min(acc,40)*2.25-Math.min(headErr,90)*.22+(mapQ-50)*.18),0,100);
   const hasTurnLanes=Boolean(directionalLaneValue(m.road.tags,"turn:lanes",dir)),geom=laneGeometry(m.road.tags,dir,total);
-  const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),accessible:laneAccess(m.road.tags,dir,total),geometry:geom};
+  const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),destinations:laneDestinations(m.road.tags,dir,total),accessible:laneAccess(m.road.tags,dir,total),geometry:geom};
   if(!total)return{...base,index:null,candidateIndex:null,reason:"Nombre de voies absent dans OSM"};
   const offRaw=signedLateralM(pos,m.nearest,rb),cal=laneCalibrationBias(m,dir),off=offRaw-cal.bias,candidateIndex=laneFromOffset(geom,off);
   if(!candidateIndex)return{...base,index:null,candidateIndex:null,lateralM:off,lateralRawM:offRaw,calibration:cal,reason:"Position latérale incompatible avec la géométrie des voies"};
@@ -777,19 +784,22 @@ function nextInstruction(pos){
   }
   return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,after,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
 }
+function turnTokenFits(token,desired){
+  const v=normalizeIndication(token);
+  if(desired==="left")return v==="left"||v==="slight_left"||v==="sharp_left"||String(token).includes("merge_to_left");
+  if(desired==="right")return v==="right"||v==="slight_right"||v==="sharp_right"||String(token).includes("merge_to_right");
+  if(desired==="uturn")return v==="uturn";
+  if(desired==="roundabout")return true;
+  return v==="through"||String(token).toLowerCase()==="straight"
+}
 function compatibleLanes(lane,turn){
   if(!lane.total)return[];
   const desired=turn||"through",out=[],access=lane.accessible?.length?lane.accessible:Array.from({length:lane.total},()=>true);
-  lane.turns.forEach((raw,i)=>{if(access[i]===false)return;const vals=raw.split(";").map(v=>v.trim());if(vals.includes(desired)||(desired==="through"&&(vals.includes("through")||vals.includes("straight"))))out.push(i+1)});
+  lane.turns.forEach((raw,i)=>{if(access[i]===false)return;const vals=String(raw||"").split(";").map(v=>v.trim()).filter(Boolean);if(vals.some(v=>turnTokenFits(v,desired)))out.push(i+1)});
   return out
 }
 function indicationFitsTurn(indications,turn){
-  const vals=indications?.length?indications:["through"];
-  if(turn==="left")return vals.some(v=>v==="left"||v==="slight_left"||v==="sharp_left");
-  if(turn==="right")return vals.some(v=>v==="right"||v==="slight_right"||v==="sharp_right");
-  if(turn==="uturn")return vals.includes("uturn");
-  if(turn==="roundabout")return true;
-  return vals.some(v=>v==="through")
+  const vals=indications?.length?indications:["through"];return vals.some(v=>turnTokenFits(v,turn))
 }
 function osrmCompatibleLanes(hint,turn){
   if(!hint?.lanes?.length)return[];
@@ -1268,7 +1278,7 @@ function advanceVisualGps(now){
 }
 function currentDrawState(){
   const lane=S.lastLane,nav=S.lastNav,plan=nav&&lane?routeLaneStrategy(lane,nav):null;
-  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns:lane?.turns||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
+  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns:lane?.turns||[],destinations:lane?.destinations||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
 }
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);
