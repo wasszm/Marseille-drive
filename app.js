@@ -85,9 +85,9 @@ function laneCount(tags,dir){
   if(direct)return direct;
   const total=positiveInt(tags.lanes),oneway=String(tags.oneway||"").toLowerCase();
   if(["yes","1","true","-1"].includes(oneway))return total;
-  const opposite=positiveInt(dir==="forward"?tags["lanes:backward"]:tags["lanes:forward"]);
-  if(total&&opposite&&total>opposite)return total-opposite;
-  if(total&&total%2===0)return total/2;
+  const opposite=positiveInt(dir==="forward"?tags["lanes:backward"]:tags["lanes:forward"]),both=positiveInt(tags["lanes:both_ways"]);
+  if(total&&opposite&&total>opposite+both)return total-opposite-both;
+  const directional=Math.max(0,total-both);if(directional&&directional%2===0)return directional/2;
   return total===1?1:0;
 }
 function directionalLaneValue(tags,key,dir){
@@ -1784,16 +1784,17 @@ function sceneRoadMetrics(d){
   const lane=S.lastLane,tags=effectiveMatch()?.road?.tags||{},dir=lane?.dir||"forward",total=Math.max(1,d.total||lane?.total||1),oneway=["yes","1","true","-1"].includes(String(tags.oneway||"").toLowerCase());
   let ownBounds=lane?.geometry?.bounds?.length===total+1?[...lane.geometry.bounds]:null;
   if(!ownBounds){const sum=total*CFG.laneWidthM;ownBounds=Array.from({length:total+1},(_,i)=>-sum/2+i*CFG.laneWidthM)}
-  let oppositeBounds=[],dividerOffset=null;
+  let oppositeBounds=[],dividerOffset=null;const bothWays=positiveInt(tags["lanes:both_ways"]);
   if(!oneway){
     const oppDir=dir==="forward"?"backward":"forward",oppTotal=laneCount(tags,oppDir)||Math.max(1,(positiveInt(tags.lanes)||total*2)-total),oppGeom=laneGeometry(tags,oppDir,oppTotal);
     if(oppGeom?.bounds?.length)oppositeBounds=oppGeom.bounds.map(x=>-x).reverse();
     else oppositeBounds=Array.from({length:oppTotal+1},(_,i)=>-oppTotal*CFG.laneWidthM+i*CFG.laneWidthM);
-    dividerOffset=0
+    dividerOffset=bothWays?null:0
   }
   const all=[...ownBounds,...oppositeBounds],driveMin=Math.min(...all),driveMax=Math.max(...all),parkingLeft=parkingSideWidth(tags,"left",dir),parkingRight=parkingSideWidth(tags,"right",dir),asphaltMin=driveMin-parkingLeft,asphaltMax=driveMax+parkingRight,cycleLeft=cycleSideInfo(tags,"left",dir),cycleRight=cycleSideInfo(tags,"right",dir),curbMin=asphaltMin-cycleLeft.width,curbMax=asphaltMax+cycleRight.width,sidewalkLeft=sidewalkSideWidth(tags,"left",dir),sidewalkRight=sidewalkSideWidth(tags,"right",dir);
-  const centers=ownBounds.slice(0,-1).map((x,i)=>(x+ownBounds[i+1])/2);
-  return{tags,dir,total,oneway,ownBounds,centers,oppositeBounds,driveMin,driveMax,asphaltMin,asphaltMax,curbMin,curbMax,roadWidth:asphaltMax-asphaltMin,dividerOffset,parkingLeft,parkingRight,cycleLeft,cycleRight,sidewalkLeft,sidewalkRight}
+  const centers=ownBounds.slice(0,-1).map((x,i)=>(x+ownBounds[i+1])/2),oppMax=oppositeBounds.length?Math.max(...oppositeBounds):null,ownMin=Math.min(...ownBounds),centerZone=bothWays&&Number.isFinite(oppMax)&&ownMin>oppMax?{min:oppMax,max:ownMin}:null;
+  const dividerRaw=String(tags.divider||"").toLowerCase(),physicalDivider=!bothWays&&/kerb|grass|barrier|physical|raised|median/.test(dividerRaw),dividerWidth=physicalDivider?clamp(parseMeters(tags["divider:width"]||tags["width:divider"])||.7,.25,3):0;
+  return{tags,dir,total,oneway,ownBounds,centers,oppositeBounds,driveMin,driveMax,asphaltMin,asphaltMax,curbMin,curbMax,roadWidth:asphaltMax-asphaltMin,dividerOffset,bothWays,centerZone,physicalDivider,dividerWidth,parkingLeft,parkingRight,cycleLeft,cycleRight,sidewalkLeft,sidewalkRight}
 }
 function laneBoundaryStyle(lane,boundary){
   if(!lane||boundary<1||boundary>=lane.total)return{solid:false,double:false};
@@ -1816,6 +1817,16 @@ function drawSceneLabels(c,w,h,hz,path,d,metrics){
   const current=effectiveMatch()?roadName(effectiveMatch().road):"",next=S.lastNav?.nextRoad||"";
   if(current&&current!=="Route sans nom"&&S.scene3d.quality!=="LOW"){const p=screenAtForward(path,58,w,h,hz),txt=current.slice(0,24);c.save();c.font="800 9px -apple-system,Arial";const tw=c.measureText?c.measureText(txt).width:txt.length*5.2;c.fillStyle="rgba(10,15,18,.62)";c.fillRect(p.x-tw/2-5,p.y-11,tw+10,15);c.fillStyle="rgba(255,255,255,.88)";c.textAlign="center";c.fillText(txt,p.x,p.y);c.restore()}
   if(next&&Number.isFinite(d.distance)&&d.distance<210){const p=screenAtForward(path,clamp(d.distance,25,195),w,h,hz),txt=next.slice(0,25);c.save();c.font="900 8px -apple-system,Arial";const tw=c.measureText?c.measureText(txt).width:txt.length*5;c.fillStyle="rgba(45,225,130,.88)";c.fillRect(p.x-tw/2-5,p.y-32,tw+10,14);c.fillStyle="#07120d";c.textAlign="center";c.fillText(txt,p.x,p.y-22);c.restore()}
+}
+function drawCenterTreatment(c,w,h,hz,path,metrics){
+  if(metrics.centerZone){
+    c.save();c.globalAlpha=.12;poly(c,[...offsetScreenPath(path,metrics.centerZone.min,w,h,hz),...offsetScreenPath(path,metrics.centerZone.max,w,h,hz).reverse()],"#d7ba68");c.globalAlpha=1;
+    drawPathLine(c,offsetScreenPath(path,metrics.centerZone.min,w,h,hz),"rgba(239,239,225,.76)",1.4,[10,10]);drawPathLine(c,offsetScreenPath(path,metrics.centerZone.max,w,h,hz),"rgba(239,239,225,.76)",1.4,[10,10]);
+    if(S.scene3d.quality==="HIGH"){const p=screenAtForward(path,34,w,h,hz),cx=p.x+((metrics.centerZone.min+metrics.centerZone.max)/2)*p.ppm;c.fillStyle="rgba(255,245,210,.68)";c.font="900 8px -apple-system,Arial";c.textAlign="center";c.fillText("↰  ↱",cx,p.y)}c.restore();return
+  }
+  if(metrics.physicalDivider&&metrics.dividerWidth>0){
+    const l=-metrics.dividerWidth/2,r=metrics.dividerWidth/2;c.save();poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],/grass/.test(String(metrics.tags.divider))?(isDayScene()?"#5d805f":"#34503b"):(isDayScene()?"#9da2a1":"#585f62"));drawPathLine(c,offsetScreenPath(path,l,w,h,hz),"rgba(235,237,235,.7)",1);drawPathLine(c,offsetScreenPath(path,r,w,h,hz),"rgba(235,237,235,.7)",1);c.restore()
+  }
 }
 function drawParkingBays(c,w,h,hz,path,metrics){
   const day=isDayScene(),one=(side,width)=>{
@@ -1888,6 +1899,7 @@ function draw3D(d={}){
   if(metrics.cycleRight.width>0)poly(c,[...asphaltR,...curbR.slice().reverse()],day?"#5b9177":"#315647");
   drawRoadSurfaceDetails(c,w,h,hz,path,metrics);
   drawParkingBays(c,w,h,hz,path,metrics);
+  drawCenterTreatment(c,w,h,hz,path,metrics);
   drawCurbs(c,w,h,hz,path,metrics);
   if(context.tunnel)drawTunnelShell(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
   if(context.bridge)drawBridgeRails(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
@@ -1902,7 +1914,7 @@ function draw3D(d={}){
   if(d.target&&d.target!==rec&&d.target>=1&&d.target<=total){const l=metrics.ownBounds[d.target-1],rr=metrics.ownBounds[d.target];c.globalAlpha=.10;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,rr,w,h,hz).reverse()],"#45e58a");c.globalAlpha=1}
 
   const recL=metrics.ownBounds[rec-1],recR=metrics.ownBounds[rec];c.globalAlpha=.13;poly(c,[...offsetScreenPath(path,recL,w,h,hz),...offsetScreenPath(path,recR,w,h,hz).reverse()],"#38e88c");c.globalAlpha=1;
-  if(Number.isFinite(metrics.dividerOffset)){const dp=offsetScreenPath(path,metrics.dividerOffset,w,h,hz),divider=String(metrics.tags.divider||"").toLowerCase(),dbl=/double/.test(divider);if(dbl){drawPathLine(c,offsetScreenPath(path,metrics.dividerOffset-.10,w,h,hz),"#f1f1f1",1.5);drawPathLine(c,offsetScreenPath(path,metrics.dividerOffset+.10,w,h,hz),"#f1f1f1",1.5)}else drawPathLine(c,dp,"#efefef",2,divider.includes("dashed")?[10,10]:[14,10])}
+  if(Number.isFinite(metrics.dividerOffset)&&!metrics.physicalDivider){const dp=offsetScreenPath(path,metrics.dividerOffset,w,h,hz),divider=String(metrics.tags.divider||"").toLowerCase(),dbl=/double/.test(divider);if(dbl){drawPathLine(c,offsetScreenPath(path,metrics.dividerOffset-.10,w,h,hz),"#f1f1f1",1.5);drawPathLine(c,offsetScreenPath(path,metrics.dividerOffset+.10,w,h,hz),"#f1f1f1",1.5)}else drawPathLine(c,dp,"#efefef",2,divider.includes("dashed")?[10,10]:[14,10])}
   for(let i=1;i<total;i++){const off=metrics.ownBounds[i],style=laneBoundaryStyle(S.lastLane,i);if(style.double){drawPathLine(c,offsetScreenPath(path,off-.07,w,h,hz),"#dce1e3",1.15);drawPathLine(c,offsetScreenPath(path,off+.07,w,h,hz),"#dce1e3",1.15)}else drawPathLine(c,offsetScreenPath(path,off,w,h,hz),"#dce1e3",1.7,style.solid?[]:[10,13])}
   drawLaneCountTransition(c,w,h,hz,path,d,metrics);
   drawLaneGuidanceRibbon(c,w,h,hz,path,{...d,recommended:rec},metrics);
