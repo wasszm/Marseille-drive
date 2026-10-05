@@ -141,3 +141,6 @@ body.drive-mode .belief-hud{top:250px}
 body.drive-mode .horizon-hud{top:292px}
 @media(max-height:720px){body.drive-mode .horizon-hud{display:none!important}}
 .junction-lanes .restricted{opacity:.28;text-decoration:line-through}
+
+.junction-lanes span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:54px}
+.junction-lanes span b{font-size:28px;line-height:1}.junction-lanes span small{max-width:76px;margin-top:3px;font-size:6px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
