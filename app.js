@@ -1559,58 +1559,53 @@ function drawEnvironment(c,w,h,hz,heading){
     }
   }
 }
-function drawCrossings(c,w,h,hz,heading,total){
+function drawCrossings(c,w,h,hz,heading,metrics){
   const pos=scenePosition();if(S.demo||!pos)return;
-  for(const o of visibleEnvironment(pos,heading,100).filter(x=>x.kind==="crossing").slice(0,3)){
-    const p=roadScreenPoint({side:0,forward:o.forward},w,h,hz),half=CFG.laneWidthM*Math.max(1,total)/2*p.ppm;
+  for(const o of visibleEnvironment(pos,heading,105).filter(x=>x.kind==="crossing").slice(0,S.scene3d.quality==="LOW"?2:4)){
+    const p=roadScreenPoint({side:0,forward:o.forward},w,h,hz),x1=p.x+metrics.driveMin*p.ppm,x2=p.x+metrics.driveMax*p.ppm,step=Math.max(2,p.ppm*.27);
     c.save();c.strokeStyle="rgba(255,255,255,.88)";c.lineWidth=Math.max(2,p.ppm*.22);
-    for(let i=-3;i<=3;i++){const yy=p.y+i*Math.max(2,p.ppm*.26);c.beginPath();c.moveTo(p.x-half,yy);c.lineTo(p.x+half,yy);c.stroke()}
+    for(let i=-3;i<=3;i++){const yy=p.y+i*step;c.beginPath();c.moveTo(x1,yy);c.lineTo(x2,yy);c.stroke()}
     c.restore()
   }
 }
-function drawRouteIntersections(c,w,h,hz,heading,path,total){
+function drawRouteIntersections(c,w,h,hz,heading,path,metrics){
   if(S.demo||!S.routeIntersections.length)return;
   const along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong;if(!Number.isFinite(along))return;
-  const visible=S.routeIntersections.filter(x=>x.along>=along+12&&x.along<=along+180).slice(0,5),roadHalfM=CFG.laneWidthM*Math.max(1,total)/2;
+  const visible=S.routeIntersections.filter(x=>x.along>=along+12&&x.along<=along+190).slice(0,S.scene3d.quality==="LOW"?3:6);
   for(const it of visible){
-    const distance=it.along-along,p=screenAtForward(path,distance,w,h,hz),scale=p.ppm,baseHalf=roadHalfM*scale;
+    const distance=it.along-along,p=screenAtForward(path,distance,w,h,hz),scale=p.ppm;
     it.bearings.forEach((b,i)=>{
       if(i===it.in)return;const rel=signedAngle(heading,b);if(Math.abs(rel)<18||Math.abs(rel)>168)return;
-      const reachable=it.entry?.[i]!==false,isOut=i===it.out,span=clamp(42+scale*12,42,w*.32),dx=Math.sin(rad(rel))*span,dy=-Math.cos(rad(rel))*span*.28;
-      c.save();c.strokeStyle=isOut?"rgba(61,239,139,.82)":reachable?(isDayScene()?"rgba(65,70,72,.92)":"rgba(29,35,39,.96)"):"rgba(90,95,98,.28)";c.lineWidth=isOut?Math.max(5,scale*1.25):Math.max(7,scale*2.1);c.lineCap="round";c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke();
-      if(isOut){c.strokeStyle="rgba(224,255,236,.9)";c.lineWidth=Math.max(1.5,scale*.34);c.setLineDash([6,6]);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke()}
+      const reachable=it.entry?.[i]!==false,isOut=i===it.out,span=clamp(48+scale*13,46,w*.36),dx=Math.sin(rad(rel))*span,dy=-Math.cos(rad(rel))*span*.30,branchWidth=clamp(metrics.roadWidth*scale*.72,6,30);
+      c.save();c.strokeStyle=isOut?"rgba(52,75,66,.96)":reachable?(isDayScene()?"rgba(57,62,64,.97)":"rgba(24,30,34,.98)"):"rgba(90,95,98,.24)";c.lineWidth=isOut?branchWidth:branchWidth*.88;c.lineCap="round";c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke();
+      if(isOut){c.strokeStyle="rgba(80,244,150,.86)";c.lineWidth=Math.max(2,scale*.45);c.setLineDash([8,6]);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke()}
       c.restore()
     })
   }
 }
-function drawMappedJunctions(c,w,h,hz,heading,path,total){
-  const pos=scenePosition();if(S.demo||!pos||!S.junctions.length)return;
-  const candidates=[];
+function drawMappedJunctions(c,w,h,hz,heading,path,metrics){
+  const pos=scenePosition();if(S.demo||!pos||!S.junctions.length)return;const candidates=[];
   for(const j of S.junctions){
-    const local=geoToLocal(pos,heading,j);if(local.forward<18||local.forward>150||Math.abs(local.side)>45)continue;
-    const rp=S.routeCoords.length?routeProjection(j,S.lastRouteAlong):null;
-    if(S.routeCoords.length&&rp&&rp.distance>28)continue;
-    candidates.push({...j,local})
+    const local=geoToLocal(pos,heading,j);if(local.forward<18||local.forward>165||Math.abs(local.side)>50)continue;
+    const rp=S.routeCoords.length?routeProjection(j,S.lastRouteAlong):null;if(S.routeCoords.length&&rp&&rp.distance>30)continue;candidates.push({...j,local})
   }
   candidates.sort((a,b)=>b.local.forward-a.local.forward);
-  for(const j of candidates.slice(0,5)){
-    const p=screenAtForward(path,j.local.forward,w,h,hz),roadHalf=CFG.laneWidthM*Math.max(1,total)/2*p.ppm,th=clamp(p.ppm*3.2,7,30);
-    const rel=j.branches.map(b=>signedAngle(heading,b.bearing));
-    const left=rel.some(a=>a<-35&&a>-145),right=rel.some(a=>a>35&&a<145);
-    c.fillStyle=isDayScene()?"#363b3d":"#181d20";
-    if(left)c.fillRect(0,p.y-th/2,p.x+roadHalf,p.y?th:th);
-    if(right)c.fillRect(p.x-roadHalf,p.y-th/2,w-(p.x-roadHalf),th);
-    c.strokeStyle=isDayScene()?"rgba(245,245,245,.72)":"rgba(220,225,228,.65)";c.lineWidth=1;
-    if(left){c.beginPath();c.moveTo(0,p.y-th/2);c.lineTo(p.x-roadHalf,p.y-th/2);c.moveTo(0,p.y+th/2);c.lineTo(p.x-roadHalf,p.y+th/2);c.stroke()}
-    if(right){c.beginPath();c.moveTo(p.x+roadHalf,p.y-th/2);c.lineTo(w,p.y-th/2);c.moveTo(p.x+roadHalf,p.y+th/2);c.lineTo(w,p.y+th/2);c.stroke()}
+  for(const j of candidates.slice(0,S.scene3d.quality==="LOW"?3:6)){
+    const p=screenAtForward(path,j.local.forward,w,h,hz);
+    for(const branch of j.branches){
+      const rel=signedAngle(heading,branch.bearing);if(Math.abs(rel)<28||Math.abs(rel)>152)continue;
+      const dir=rel>0?1:-1,branchM=roadApproxWidthM(branch.road.tags),th=clamp(branchM*p.ppm,7,44),edge=dir>0?p.x+metrics.driveMax*p.ppm:p.x+metrics.driveMin*p.ppm,span=dir>0?w-edge:edge;
+      c.save();c.strokeStyle=isDayScene()?"#373c3e":"#181e21";c.lineWidth=th;c.lineCap="butt";c.beginPath();c.moveTo(edge,p.y);c.lineTo(dir>0?edge+span:edge-span,p.y);c.stroke();
+      c.strokeStyle=isDayScene()?"rgba(242,244,244,.62)":"rgba(220,225,228,.55)";c.lineWidth=1;c.beginPath();c.moveTo(edge,p.y-th/2);c.lineTo(dir>0?w:0,p.y-th/2);c.moveTo(edge,p.y+th/2);c.lineTo(dir>0?w:0,p.y+th/2);c.stroke();c.restore()
+    }
   }
 }
-function drawJunctionGeometry(c,w,h,hz,d,path,total){
-  if(!Number.isFinite(d.distance)||d.distance>145||d.arrived)return;
-  const p=screenAtForward(path,Math.max(10,d.distance),w,h,hz),roadHalf=CFG.laneWidthM*Math.max(1,total)/2*p.ppm,th=clamp(p.ppm*4.5,10,52);
+function drawJunctionGeometry(c,w,h,hz,d,path,metrics){
+  if(!Number.isFinite(d.distance)||d.distance>155||d.arrived)return;
+  const p=screenAtForward(path,Math.max(10,d.distance),w,h,hz),left=p.x+metrics.asphaltMin*p.ppm,right=p.x+metrics.asphaltMax*p.ppm,half=Math.max(p.x-left,right-p.x),th=clamp(metrics.roadWidth*p.ppm*.72,10,56);
   c.fillStyle="#191e21";
-  if(d.turn==="roundabout"){c.beginPath();c.arc(p.x,p.y,clamp(roadHalf*1.15,14,48),0,Math.PI*2);c.fill();c.strokeStyle="#d7dde0";c.lineWidth=2;c.stroke();c.fillStyle="#33423c";c.beginPath();c.arc(p.x,p.y,clamp(roadHalf*.45,6,20),0,Math.PI*2);c.fill()}
-  else if(d.turn==="left"||d.turn==="right"){const dir=d.turn==="right"?1:-1;c.fillRect(dir>0?p.x-roadHalf:p.x-w,p.y-th/2,dir>0?w-p.x+roadHalf:p.x+roadHalf,th);c.strokeStyle="#d7dde0";c.lineWidth=1.5;c.beginPath();c.moveTo(dir>0?p.x-roadHalf:0,p.y-th/2);c.lineTo(dir>0?w:p.x+roadHalf,p.y-th/2);c.moveTo(dir>0?p.x-roadHalf:0,p.y+th/2);c.lineTo(dir>0?w:p.x+roadHalf,p.y+th/2);c.stroke()}
+  if(d.turn==="roundabout"){c.beginPath();c.arc(p.x,p.y,clamp(half*1.18,15,52),0,Math.PI*2);c.fill();c.strokeStyle="#d7dde0";c.lineWidth=2;c.stroke();c.fillStyle="#33423c";c.beginPath();c.arc(p.x,p.y,clamp(half*.46,6,22),0,Math.PI*2);c.fill()}
+  else if(d.turn==="left"||d.turn==="right"){const dir=d.turn==="right"?1:-1;c.fillRect(dir>0?left:0,p.y-th/2,dir>0?w-left:right,th);c.strokeStyle="#d7dde0";c.lineWidth=1.4;c.beginPath();c.moveTo(dir>0?left:0,p.y-th/2);c.lineTo(dir>0?w:right,p.y-th/2);c.moveTo(dir>0?left:0,p.y+th/2);c.lineTo(dir>0?w:right,p.y+th/2);c.stroke()}
 }
 function drawDecisionRibbon(c,w,h,hz,d,path,total){
   const one=(turn,distance,secondary=false)=>{
