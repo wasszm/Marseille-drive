@@ -30,3 +30,53 @@
 .route-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
 .street-btn{border:1px solid rgba(255,255,255,.12);background:#151d22;color:#fff;border-radius:9px;padding:6px 8px;font-size:9px;font-weight:900}
 #routeCard .street-btn,#routeCard .clear-btn{pointer-events:auto}
+
+/* BETA 7 — map search, field tools and cleaner driving mode */
+.map-search{position:absolute;top:147px;left:10px;right:72px;padding:6px;pointer-events:auto;z-index:24}
+.map-search form{display:flex;gap:6px}
+.map-search input{min-width:0;flex:1;border:1px solid rgba(255,255,255,.10);background:#11191e;color:#fff;border-radius:11px;padding:9px 10px;font-size:12px;outline:none}
+.map-search input::placeholder{color:#ffffff70}
+.map-search button{border:0;border-radius:10px;background:#fff;color:#111;padding:8px 11px;font-size:10px;font-weight:900}
+.search-results{position:absolute;left:0;right:0;top:48px;padding:5px;background:rgba(7,12,16,.96);border:1px solid rgba(255,255,255,.09);border-radius:14px;box-shadow:0 16px 35px rgba(0,0,0,.45)}
+.search-results button{display:block;width:100%;text-align:left;background:transparent;color:#fff;border:0;border-radius:9px;padding:9px 10px;font-size:10px;line-height:1.25}
+.search-results button+button{border-top:1px solid rgba(255,255,255,.06)}
+.search-results button:active{background:#ffffff12}
+.recenter-btn{position:absolute;right:12px;top:247px;width:46px;height:46px;border:0;color:#fff;font-size:25px;font-weight:800;pointer-events:auto;z-index:25}
+.map-free .recenter-btn{background:#fff;color:#111}
+.status{top:202px;left:10px;transform:none;max-width:66vw}
+.env-badge{top:204px}
+.speed-limit{top:147px}
+
+.diag-panel{position:fixed;z-index:70;left:12px;right:12px;bottom:max(14px,env(safe-area-inset-bottom));padding:14px;pointer-events:auto}
+.diag-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.diag-head b{font-size:16px}.diag-head button{border:0;background:#ffffff12;color:#fff;border-radius:9px;width:34px;height:34px;font-weight:900}
+.diag-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}
+.diag-grid div{background:#11191e;border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:8px}
+.diag-grid small{display:block;font-size:7px;letter-spacing:.7px;opacity:.45}.diag-grid b{display:block;font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.diag-actions{display:flex;gap:8px;margin-top:10px}.diag-actions button{flex:1;border:0;border-radius:10px;padding:10px;font-size:10px;font-weight:900}
+#recordBtn.recording{background:#e95555;color:#fff}#exportBtn:disabled{opacity:.38}
+.diag-note{font-size:8px;line-height:1.4;opacity:.52;margin-top:9px}
+
+.vision-stage{position:relative}.vision-stage video{display:block}.vision-stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#visionStatus{max-width:75%;line-height:1.3}
+
+body.drive-mode .map-search,body.drive-mode .recenter-btn,body.drive-mode .route-card{display:none!important}
+body.drive-mode .status{top:145px;left:50%;transform:translateX(-50%);max-width:58vw}
+body.drive-mode .env-badge{top:200px;right:12px}
+body.drive-mode .speed-limit{top:147px}
+body.drive-mode .junction-assist{bottom:153px;padding:9px 11px;background:rgba(7,12,16,.76)}
+body.drive-mode .junction-text{font-size:13px}
+body.drive-mode .junction-lanes{margin-top:6px}
+body.drive-mode .nav-card{padding:10px 12px}
+body.drive-mode .instruction{font-size:19px}
+body.drive-mode .detail{font-size:9px}
+body.drive-mode .advice{padding:6px 8px}
+body.drive-mode .metrics{background:rgba(7,12,16,.74)}
+body.drive-mode .topbar{background:rgba(7,12,16,.76)}
+
+@media(max-height:720px){
+  body.drive-mode .junction-assist{bottom:135px}
+  body.drive-mode .nav-card{padding:8px 11px}
+  body.drive-mode .instruction{font-size:17px}
+  .toolbar .tool{padding-top:6px;padding-bottom:6px}
+}
