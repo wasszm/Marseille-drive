@@ -120,7 +120,7 @@ function buildRoadJunctions(roads){
 }
 async function loadRoadData(lat,lon){
   if(S.roadLoading)return;S.roadLoading=true;setStatus("Chargement des routes autour de toi…");
-  const b=bbox(lat,lon,CFG.queryRadiusKm),q=`[out:json][timeout:30];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b}););out geom tags;`;
+  const b=bbox(lat,lon,CFG.queryRadiusKm),q=`[out:json][timeout:30];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b}););out body geom;`;
   try{
     const data=await fetchOverpass(q),roads=[],signals=[];
     for(const e of data.elements||[]){
