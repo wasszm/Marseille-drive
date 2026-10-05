@@ -323,8 +323,8 @@ async function enableCompass(){
 function gpsQuality(raw=S.rawGps,match=S.lastMatch){
   if(!raw)return 0;
   const acc=raw.accuracy||999,accQ=clamp(1-(acc-3)/27,0,1),matchQ=match?clamp((match.quality||0)/100,0,1):.35;
-  const ageQ=clamp(1-(Date.now()-(raw.t||Date.now()))/7000,0,1);
-  return Math.round(100*(accQ*.56+matchQ*.34+ageQ*.10))
+  const ageQ=clamp(1-(Date.now()-(raw.t||Date.now()))/7000,0,1),rejectPenalty=raw.rejected?.38:1;
+  return Math.round(100*(accQ*.56+matchQ*.34+ageQ*.10)*rejectPenalty)
 }
 function acceptGpsInnovation(raw){
   const prev=S.lastAcceptedRaw;if(!prev){S.lastAcceptedRaw={...raw};return{...raw,rejected:false}}
@@ -603,7 +603,7 @@ function recordSample(){
     raw:S.rawGps?{lat:S.rawGps.lat,lon:S.rawGps.lon}:null,
     match:m?{distanceM:+m.distance.toFixed(2),quality:m.quality??0,score:+m.score.toFixed(2),road:roadName(m.road),wayId:m.road.id}:null,
     lane:l?{index:l.index,total:l.total,confidence:l.confidence,belief:l.belief||null,beliefTop:l.beliefTop??null,beliefGap:l.beliefGap??null,lateralM:Number.isFinite(l.lateralM)?+l.lateralM.toFixed(2):null}:null,
-    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable}:null
+    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
   $("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
@@ -675,12 +675,15 @@ function fitVisionLine(points){
   return{a,b,error:err/n,xAt:y=>a*y+b}
 }
 function visionLaneCue(left,right,W,H,pointConfidence){
-  const L=fitVisionLine(left),R=fitVisionLine(right);if(!L||!R)return{confidence:Math.round(pointConfidence*.45),valid:false,offsetNorm:0,nearBoundary:false};
+  const L=fitVisionLine(left),R=fitVisionLine(right);if(!L||!R)return{confidence:Math.round(pointConfidence*.35),valid:false,alignment:false,offsetNorm:0,nearBoundary:false};
+  const denom=L.a-R.a,vanishY=Math.abs(denom)>1e-4?(R.b-L.b)/denom:null,vanishX=Number.isFinite(vanishY)?L.xAt(vanishY):null;
+  const alignment=Number.isFinite(vanishX)&&Number.isFinite(vanishY)&&vanishX>W*.20&&vanishX<W*.80&&vanishY>-140&&vanishY<H*.68;
+  const yawNorm=Number.isFinite(vanishX)?(vanishX-W/2)/W:null;
   const y=H*.89,lx=L.xAt(y),rx=R.xAt(y),width=rx-lx;
-  if(width<28||width>118||lx>=rx)return{confidence:Math.round(pointConfidence*.5),valid:false,offsetNorm:0,nearBoundary:false};
-  const residual=(L.error+R.error)/2,geometry=clamp(100-residual*9-Math.abs(width-66)*.45,0,100),confidence=Math.round(clamp(pointConfidence*.65+geometry*.35,0,100));
+  if(width<28||width>118||lx>=rx)return{confidence:Math.round(pointConfidence*.4),valid:false,alignment,yawNorm,vanishX,vanishY,offsetNorm:0,nearBoundary:false};
+  const residual=(L.error+R.error)/2,geometry=clamp(100-residual*9-Math.abs(width-66)*.45,0,100),alignPenalty=alignment?0:34,confidence=Math.round(clamp(pointConfidence*.62+geometry*.38-alignPenalty,0,100));
   const center=(lx+rx)/2,offsetNorm=(W/2-center)/width,edge=Math.min(W/2-lx,rx-W/2)/width,nearBoundary=edge<.25||Math.abs(offsetNorm)>.27;
-  return{confidence,valid:true,offsetNorm:+offsetNorm.toFixed(3),nearBoundary,laneWidthPx:+width.toFixed(1),leftFit:L,rightFit:R}
+  return{confidence,valid:alignment&&confidence>=38,alignment,yawNorm:Number.isFinite(yawNorm)?+yawNorm.toFixed(3):null,vanishX:Number.isFinite(vanishX)?+vanishX.toFixed(1):null,vanishY:Number.isFinite(vanishY)?+vanishY.toFixed(1):null,offsetNorm:+offsetNorm.toFixed(3),nearBoundary,laneWidthPx:+width.toFixed(1),leftFit:L,rightFit:R}
 }
 function fuseLaneWithVision(lane){
   const v=S.visionCue;if(!lane||!v?.valid||v.confidence<62)return lane;
@@ -707,7 +710,7 @@ function analyzeVisionFrame(){
     }
   }
   const pointConf=clamp(Math.min(left.length,right.length)/20*100,0,100),cue=visionLaneCue(left,right,W,H,pointConf);
-  if(cue.valid&&cue.confidence>=65)S.visionStableFrames=Math.min(20,S.visionStableFrames+1);else S.visionStableFrames=Math.max(0,S.visionStableFrames-1);
+  if(cue.valid&&cue.alignment&&cue.confidence>=65)S.visionStableFrames=Math.min(20,S.visionStableFrames+1);else S.visionStableFrames=Math.max(0,S.visionStableFrames-1);
   S.visionCue={...cue,left,right,stable:S.visionStableFrames>=3};
   const rect=v.getBoundingClientRect(),D=devicePixelRatio||1;overlay.width=Math.max(1,Math.round(rect.width*D));overlay.height=Math.max(1,Math.round(rect.height*D));
   const c=overlay.getContext("2d");c.setTransform(D,0,0,D,0,0);c.clearRect(0,0,rect.width,rect.height);
@@ -715,8 +718,9 @@ function analyzeVisionFrame(){
   const drawFit=(fit)=>{if(!fit)return;c.beginPath();c.moveTo(fit.xAt(48)*sx,48*sy);c.lineTo(fit.xAt(94)*sx,94*sy);c.lineWidth=3;c.strokeStyle=cue.confidence>=65?"rgba(80,240,160,.92)":"rgba(255,255,255,.6)";c.stroke()};
   drawFit(cue.leftFit);drawFit(cue.rightFit);
   c.strokeStyle=cue.nearBoundary?"rgba(255,195,70,.9)":"rgba(255,255,255,.28)";c.lineWidth=2;c.beginPath();c.moveTo(rect.width*.5,rect.height*.49);c.lineTo(rect.width*.5,rect.height*.96);c.stroke();
-  const state=cue.valid?(cue.nearBoundary?"proche marquage":"centrage voie"):"repères incomplets";
-  $("visionStatus").textContent=`Vision ${cue.confidence}% · ${state} · assistance de stabilité uniquement`;
+  if(Number.isFinite(cue.vanishX)&&Number.isFinite(cue.vanishY)){c.fillStyle=cue.alignment?"rgba(80,240,160,.95)":"rgba(255,175,65,.95)";c.beginPath();c.arc(cue.vanishX*sx,cue.vanishY*sy,4,0,Math.PI*2);c.fill()}
+  const state=!cue.alignment?"caméra à aligner":cue.valid?(cue.nearBoundary?"proche marquage":"centrage voie"):"repères incomplets";
+  $("visionStatus").textContent=`Vision ${cue.confidence}% · ${state} · fusion prudente`;
   updateDiagnostics()
 }
 function setView(v){
