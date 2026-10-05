@@ -1407,42 +1407,35 @@ function renderLoop(now=performance.now()){
 function sceneHeading(){
   if(S.demo)return 0;
   const pos=scenePosition();
-  if(pos&&S.routeCoords.length){
-    const p=routeProjection(pos,S.lastRouteAlong);
-    if(p&&S.routeCoords[p.index+1])return bearing(p.nearest,S.routeCoords[p.index+1])
-  }
+  if(S.routeCoords.length&&Number.isFinite(S.routeFilter.along)&&S.routeFilter.quality>=24){const rp=routePointAtAlong(S.routeFilter.along);if(rp)return rp.bearing}
+  if(pos&&S.routeCoords.length){const p=routeProjection(pos,S.lastRouteAlong);if(p&&S.routeCoords[p.index+1])return bearing(p.nearest,S.routeCoords[p.index+1])}
   const em=effectiveMatch();if(em&&pos)return travelDirection(em,pos)==="forward"?em.roadBearing:(em.roadBearing+180)%360;
   return S.heading||0
 }
 function geoToLocal(origin,heading,p){const d=haversineM(origin,p),a=signedAngle(heading,bearing(origin,p));return{side:Math.sin(rad(a))*d,forward:Math.cos(rad(a))*d}}
-function scenePath(maxM=280){
-  if(S.demo){
-    const out=[];for(let f=0;f<=maxM;f+=12){const bend=Math.sin((f/115)+(S.demoT||0)*.05)*Math.min(10,f*.035);out.push({side:bend,forward:f})}return out
-  }
+function scenePath(maxM=300){
+  if(S.demo){const out=[];for(let f=0;f<=maxM;f+=12){const bend=Math.sin((f/115)+(S.demoT||0)*.05)*Math.min(10,f*.035);out.push({side:bend,forward:f})}return out}
   const pos=scenePosition();if(!pos)return[{side:0,forward:0},{side:0,forward:maxM}];
-  const heading=sceneHeading(),geo=[];
+  const heading=sceneHeading(),geo=[];let anchor=null;
   if(S.routeCoords.length){
-    const p=routeProjection(pos,S.lastRouteAlong);
-    if(p){geo.push(p.nearest);for(let i=p.index+1;i<S.routeCoords.length&&geo.length<100;i++)geo.push(S.routeCoords[i])}
+    if(Number.isFinite(S.routeFilter.along)&&S.routeFilter.quality>=22){
+      anchor=routePointAtAlong(S.routeFilter.along);if(anchor){geo.push({lat:anchor.lat,lon:anchor.lon});for(let i=anchor.index+1;i<S.routeCoords.length&&geo.length<120;i++)geo.push(S.routeCoords[i])}
+    }else{
+      const p=routeProjection(pos,S.lastRouteAlong);if(p){anchor=p;geo.push(p.nearest);for(let i=p.index+1;i<S.routeCoords.length&&geo.length<120;i++)geo.push(S.routeCoords[i])}
+    }
   }else if(effectiveMatch()){
     const m=effectiveMatch(),coords=m.road.coords,dir=travelDirection(m,pos),i=m.segmentIndex??0;geo.push(m.nearest);
-    if(dir==="forward")for(let j=i+1;j<coords.length&&geo.length<90;j++)geo.push(coords[j]);
-    else for(let j=i;j>=0&&geo.length<90;j--)geo.push(coords[j])
+    if(dir==="forward")for(let j=i+1;j<coords.length&&geo.length<100;j++)geo.push(coords[j]);else for(let j=i;j>=0&&geo.length<100;j--)geo.push(coords[j])
   }
   if(geo.length<2)return[{side:0,forward:0},{side:0,forward:maxM}];
-  const first=geoToLocal(pos,heading,geo[0]),acc=S.rawGps?.accuracy??pos.accuracy??30,trust=clamp((S.matchQuality-45)/45,0,1)*clamp((12-acc)/8,0,1),centerCorrection=first.side*(1-trust);
-  const raw=[{side:clamp(first.side-centerCorrection,-14,14),forward:0}];let cum=0,prev=geo[0];
+  const rawFirst=geoToLocal(pos,heading,geo[0]),acc=S.rawGps?.accuracy??pos.accuracy??30,mapTrust=clamp((S.matchQuality-40)/50,0,1)*clamp((14-acc)/10,0,1),laneTrust=S.lastLane?.confidence?clamp((S.lastLane.confidence-42)/45,0,1):0;
+  const fusedCenter=Number.isFinite(S.fusion.lateralM)?-S.fusion.lateralM:rawFirst.side,centerSide=rawFirst.side*(1-laneTrust*.72)+fusedCenter*(laneTrust*.72),trust=Math.max(mapTrust,laneTrust*.82),centerCorrection=centerSide*(1-trust);
+  const raw=[{side:clamp(centerSide-centerCorrection,-16,16),forward:0}];let cum=0,prev=geo[0];
   for(let i=1;i<geo.length;i++){
-    const p=geo[i];cum+=haversineM(prev,p);prev=p;if(cum>maxM+35)break;
-    const local=geoToLocal(pos,heading,p),side=local.side-centerCorrection;if(Math.abs(side)<190)raw.push({side,forward:cum})
+    const p=geo[i];cum+=haversineM(prev,p);prev=p;if(cum>maxM+40)break;const local=geoToLocal(pos,heading,p),side=local.side-centerCorrection;if(Math.abs(side)<210)raw.push({side,forward:cum})
   }
-  const out=[];
-  for(let i=0;i<raw.length;i++){
-    const a=raw[Math.max(0,i-1)],b=raw[i],c=raw[Math.min(raw.length-1,i+1)],side=(a.side+b.side*2+c.side)/4;
-    if(!out.length||b.forward-out[out.length-1].forward>1.5)out.push({side,forward:b.forward})
-  }
-  if(out.length<2)out.push({side:out[0]?.side||0,forward:maxM});
-  return out
+  const out=[];for(let i=0;i<raw.length;i++){const a=raw[Math.max(0,i-1)],b=raw[i],c=raw[Math.min(raw.length-1,i+1)],side=(a.side+b.side*2+c.side)/4;if(!out.length||b.forward-out[out.length-1].forward>1.5)out.push({side,forward:b.forward})}
+  if(out.length<2)out.push({side:out[0]?.side||0,forward:maxM});return out
 }
 function updateScene3dPerformance(ms){
   const P=S.scene3d;P.avgMs=P.avgMs?P.avgMs*.90+ms*.10:ms;
