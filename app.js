@@ -5,7 +5,7 @@ const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:70
 const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
-laneCalibration:{byRoad:{}},
+laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
 laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function setStatus(t,ms=3200){
@@ -358,15 +358,32 @@ function normalizeProb(v){
   return sum>1e-9?v.map(x=>Math.max(0,x)/sum):v.map(()=>1/v.length)
 }
 function laneCenters(geom){return geom?.widths?.map((_,i)=>(geom.bounds[i]+geom.bounds[i+1])/2)||[]}
+function updateLaneTransition(lane){
+  const T=S.laneTransition,now=Date.now(),lat=lane?.lateralM;
+  if(!Number.isFinite(lat)){T.score=Math.max(0,T.score-.25);T.state=T.score>.8?T.state:"STABLE";T.lastAt=now;return T}
+  if(!Number.isFinite(T.lastLateral)||!T.lastAt){T.lastLateral=lat;T.lastAt=now;return T}
+  const dt=clamp((now-T.lastAt)/1000,.08,3),speed=(lat-T.lastLateral)/dt;T.lateralSpeed=T.lateralSpeed*.55+speed*.45;T.lastLateral=lat;T.lastAt=now;
+  const visionBoundary=Boolean(S.visionCue?.stable&&S.visionCue?.nearBoundary&&S.visionCue?.confidence>=66),candidateShift=lane?.candidateIndex&&S.laneBelief.index&&lane.candidateIndex!==S.laneBelief.index;
+  const moving=Math.abs(T.lateralSpeed)>.28,direction=T.lateralSpeed>0?1:-1;
+  if(moving&&(visionBoundary||candidateShift)){if(T.direction===direction)T.score=Math.min(3,T.score+.48);else{T.direction=direction;T.score=.55}if(T.score>=1.05&&T.state==="STABLE"){T.state="FRANCHISSEMENT";T.startedAt=now}}
+  else T.score=Math.max(0,T.score-(visionBoundary?.12:.24));
+  if(T.state==="FRANCHISSEMENT"&&now-T.startedAt>550&&Math.abs(T.lateralSpeed)<.22){T.state="STABILISATION";T.score=Math.max(T.score,1)}
+  if(T.state==="STABILISATION"&&Math.abs(T.lateralSpeed)<.16&&now-T.startedAt>1250){T.state="STABLE";T.score=0;T.direction=0}
+  if(T.score<.35&&T.state!=="STABILISATION"){T.state="STABLE";T.direction=0}
+  return T
+}
 function updateLaneBelief(lane,m){
-  const B=S.laneBelief,roadId=m?.road?.id||null,total=lane?.total||0;
+  const T=updateLaneTransition(lane),B=S.laneBelief,roadId=m?.road?.id||null,total=lane?.total||0;
   if(!total||!lane.geometry){B.roadId=roadId;B.total=total;B.probs=[];B.index=null;B.confidence=0;return lane}
   if(B.roadId!==roadId||B.total!==total||B.probs.length!==total){
     B.roadId=roadId;B.total=total;B.probs=Array.from({length:total},()=>1/total);B.index=null;B.confidence=0;B.lastVisionShift=0
   }
   const prior=Array(total).fill(0);
   for(let i=0;i<total;i++)for(let j=0;j<total;j++){
-    const d=Math.abs(j-i),t=d===0?.82:d===1?.085:d===2?.008:.002;prior[j]+=B.probs[i]*t
+    const d=j-i;let t=Math.abs(d)===0?.82:Math.abs(d)===1?.085:Math.abs(d)===2?.008:.002;
+    if(T.state==="FRANCHISSEMENT"&&T.direction){if(d===T.direction)t=.24;else if(d===0)t=.67;else if(Math.abs(d)===1)t=.045}
+    else if(T.state==="STABILISATION"&&T.direction){if(d===T.direction)t=.16;else if(d===0)t=.76}
+    prior[j]+=B.probs[i]*t
   }
   const centers=laneCenters(lane.geometry),acc=S.rawGps?.accuracy??S.gps?.accuracy??999,sigma=clamp(acc*.62,1.15,8.5);
   let likelihood=Array(total).fill(1);
@@ -377,6 +394,7 @@ function updateLaneBelief(lane,m){
     })
   }
   const v=S.visionCue;
+  if(T.state==="FRANCHISSEMENT"&&T.direction&&B.index){const target=B.index-1+T.direction;if(target>=0&&target<total)likelihood[target]*=1.7}
   if(v?.stable&&v.valid&&v.confidence>=68&&B.index){
     const dir=v.offsetNorm>.22?1:v.offsetNorm<-.22?-1:0;
     if(dir&&v.nearBoundary){
@@ -392,7 +410,7 @@ function updateLaneBelief(lane,m){
   B.confidence=Math.round(clamp((lane.confidence*.42+(m?.quality||0)*.23+certainty*100*.35),0,100));
   const fusedQ=Math.min(100,(S.fusion?.quality||gpsQuality(S.rawGps,m))*.72+(S.sensorHealth.overall||0)*.28),valid=top.p>=.47&&gap>=.08&&B.confidence>=58&&fusedQ>=36;
   B.index=valid?top.i:(B.index&&top.p>=.38?B.index:null);
-  return{...lane,index:B.index,belief:[...posterior],beliefTop:+top.p.toFixed(3),beliefGap:+gap.toFixed(3),confidence:B.confidence,reason:valid?"Fusion temporelle GPS + carte + vision":"Probabilités de voie en convergence"}
+  return{...lane,index:B.index,belief:[...posterior],beliefTop:+top.p.toFixed(3),beliefGap:+gap.toFixed(3),transition:{state:T.state,direction:T.direction,lateralSpeed:+T.lateralSpeed.toFixed(2),score:+T.score.toFixed(2)},confidence:B.confidence,reason:T.state==="FRANCHISSEMENT"?"Changement de voie détecté · fusion latérale":valid?"Fusion temporelle GPS + carte + vision":"Probabilités de voie en convergence"}
 }
 function stabilizeLane(lane,m){
   const f=S.laneFilter,roadId=m?.road?.id||null;
@@ -405,7 +423,7 @@ function stabilizeLane(lane,m){
   }
   if(lane.index===f.index){f.candidate=null;f.hits=0;return lane}
   if(f.candidate===lane.index)f.hits++;else{f.candidate=lane.index;f.hits=1}
-  const visionCrossing=Boolean(S.visionCue?.stable&&S.visionCue.nearBoundary&&S.visionCue.confidence>=70),needed=visionCrossing?2:3;
+  const visionCrossing=Boolean(S.visionCue?.stable&&S.visionCue.nearBoundary&&S.visionCue.confidence>=70),detected=S.laneTransition.state==="FRANCHISSEMENT"||S.laneTransition.state==="STABILISATION",needed=detected?2:visionCrossing?2:3;
   if(f.hits>=needed){f.index=lane.index;f.candidate=null;f.hits=0;return{...lane,reason:visionCrossing?"Changement confirmé GPS + vision":"Changement confirmé par plusieurs positions GPS"}}
   return{...lane,index:f.index,reason:visionCrossing?"Vision détecte un franchissement · confirmation GPS":"Changement de voie en cours de confirmation"}
 }
@@ -945,7 +963,7 @@ function exportTrack(){
 }
 function resetFusionForReplay(){
   S.fusion={position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null};S.sensorHealth={gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"};
-  S.laneBelief={roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0};S.laneCalibration={byRoad:{}};
+  S.laneBelief={roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0};S.laneCalibration={byRoad:{}};S.laneTransition={state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0};
   S.laneFilter={roadId:null,index:null,candidate:null,hits:0};S.lastMatch=null;S.lastGoodMatch=null;S.lastGoodMatchAt=0;S.previousMatch=null;S.lastLane=null;S.lastNav=null;S.lastSignal=null;S.visualGps=null;S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.gpsRejected=0
 }
 function replayTruthIndex(points,truth){
