@@ -105,7 +105,13 @@
     <button id="recordBtn">● Démarrer trace</button>
     <button id="exportBtn" disabled>Exporter JSON</button>
   </div>
-  <div class="diag-note">La trace reste sur l’iPhone jusqu’à l’export. Elle servira uniquement à comparer GPS, route et estimation de voie pendant les essais.</div>
+  <div class="diag-actions replay-actions">
+    <input id="replayInput" type="file" accept=".json,application/json" hidden>
+    <button id="replayBtn">↻ Rejouer une trace</button>
+    <button id="stopReplayBtn" class="hidden">■ Stop replay</button>
+  </div>
+  <div id="replayScore" class="replay-score hidden">Replay : —</div>
+  <div class="diag-note">Les traces et replays restent locaux à l’iPhone. Utilise ces boutons uniquement comme passager ou à l’arrêt.</div>
 </section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="./app.js?v=9.0.0"></script>
