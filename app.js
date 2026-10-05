@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,previousMatch:null,matchQuality:0,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,previousMatch:null,matchQuality:0,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function setStatus(t,ms=3200){
   const el=$("status");el.textContent=t;el.classList.remove("quiet");clearTimeout(S.statusTimer);
@@ -400,6 +400,21 @@ function voiceCue(nav){
   const rounded=nav.distance<100?Math.max(10,Math.round(nav.distance/10)*10):Math.round(nav.distance/50)*50;
   speakNav(`Dans ${rounded} mètres, ${nav.instruction.toLowerCase()}`)
 }
+function renderTruthButtons(lane=S.lastLane){
+  const box=$("truthLanes");if(!box)return;box.replaceChildren();
+  const total=Math.min(6,lane?.total||0);
+  if(!total){const span=document.createElement("span");span.textContent="Nombre de voies inconnu";box.appendChild(span);return}
+  for(let i=1;i<=total;i++){
+    const b=document.createElement("button");b.type="button";b.textContent=String(i);b.classList.toggle("active",S.currentTruth===i);
+    b.onclick=()=>markLaneTruth(i);box.appendChild(b)
+  }
+}
+function markLaneTruth(index){
+  if(!S.gps||!S.lastLane?.total)return;
+  S.currentTruth=index;
+  const ev={t:new Date().toISOString(),lane:index,total:S.lastLane.total,road:S.lastMatch?roadName(S.lastMatch.road):null,wayId:S.lastMatch?.road?.id||null,lat:S.gps.lat,lon:S.gps.lon};
+  S.truthEvents.push(ev);$("diagTruth").textContent=`voie ${index}/${S.lastLane.total}`;renderTruthButtons(S.lastLane);setStatus(`Vérité terrain enregistrée : voie ${index}/${S.lastLane.total}`)
+}
 function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav){
   if(!$("diagGps"))return;
   $("diagGps").textContent=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)} m · ${Math.round((pos.speedMps||0)*3.6)} km/h`:"—";
@@ -407,7 +422,7 @@ function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav
   $("diagHeading").textContent=pos?`${Math.round(pos.heading||0)}°`:"—";
   $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
   $("diagRoute").textContent=nav&&Number.isFinite(nav.offRoute)?`${nav.offRoute.toFixed(1)} m écart`:(S.route?"sur route":"—");
-  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.valid?(S.visionCue.nearBoundary?"bord":"centré"):"?"}`:"—";
+  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.valid?(S.visionCue.nearBoundary?"bord":"centré"):"?"}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";renderTruthButtons(lane);
 }
 function recordSample(){
   if(!S.recording||!S.gps)return;
@@ -436,7 +451,7 @@ function toggleRecording(){
 }
 function exportTrack(){
   if(!S.track.length)return;
-  const payload={app:"Marseille Drive",version:"BETA 8",exportedAt:new Date().toISOString(),points:S.track};
+  const payload={app:"Marseille Drive",version:"BETA 8",exportedAt:new Date().toISOString(),points:S.track,truthEvents:S.truthEvents};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download=`marseille-drive-trace-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)
 }
