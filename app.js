@@ -145,6 +145,10 @@ function envHeight(tags){const h=parseFloat(String(tags?.height||"").replace(","
 function envKind(tags){
   if(tags?.building)return"building";
   if(tags?.natural==="tree")return"tree";
+  if(tags?.railway==="tram"||tags?.railway==="light_rail")return"rail";
+  if(tags?.railway==="tram_stop"||tags?.railway==="station")return"transit";
+  if(tags?.amenity==="parking")return"parking_area";
+  if(tags?.highway==="pedestrian"||tags?.place==="square")return"pedestrian_area";
   if(tags?.barrier==="hedge")return"hedge";
   if(tags?.barrier==="bollard"||tags?.barrier==="block")return"bollard";
   if(tags?.barrier)return"barrier";
@@ -170,14 +174,14 @@ function environmentObject(e){
   const tags=e.tags||{},kind=envKind(tags);
   let footprint=10;
   if(geom.length){let max=0;for(const p of geom)max=Math.max(max,haversineM(loc,p));footprint=clamp(max*1.7,5,55)}
-  const keepGeom=["building","green","water"].includes(kind)&&geom.length>=3||["hedge","barrier"].includes(kind)&&geom.length>=2;
+  const keepGeom=["building","green","water","parking_area","pedestrian_area"].includes(kind)&&geom.length>=3||["hedge","barrier","rail"].includes(kind)&&geom.length>=2;
   let shape=keepGeom?geom:null;
   if(shape&&shape.length>22){const step=Math.ceil(shape.length/20);shape=shape.filter((_,i)=>i%step===0);if(shape.length<3)shape=geom.slice(0,20)}
   return{id:String(e.id),kind,lat:loc.lat,lon:loc.lon,height:envHeight(tags),footprint,geometry:shape,name:tags.name||tags.brand||tags.shop||tags.amenity||"",tags}
 }
 async function loadEnvironmentData(lat,lon){
   if(S.environmentLoading)return;S.environmentLoading=true;S.environmentCenter={lat,lon};
-  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});way["barrier"~"^(hedge|fence|wall|guard_rail)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="stop"](${b});node["highway"="give_way"](${b});node["traffic_calming"](${b});node["barrier"="bollard"](${b});node["amenity"="bench"](${b});node["emergency"="fire_hydrant"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out body geom;`;
+  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});way["amenity"="parking"](${b});way["highway"="pedestrian"](${b});way["place"="square"](${b});way["railway"~"^(tram|light_rail)$"](${b});way["barrier"~"^(hedge|fence|wall|guard_rail)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="stop"](${b});node["highway"="give_way"](${b});node["traffic_calming"](${b});node["barrier"="bollard"](${b});node["amenity"="bench"](${b});node["emergency"="fire_hydrant"](${b});node["highway"="bus_stop"](${b});node["railway"="tram_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out body geom;`;
   try{
     const data=await fetchOverpass(q),objects=[];
     for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}
@@ -270,7 +274,7 @@ async function prefetchAheadPack(){
   const ahead=clamp((S.gps?.speedMps||0)*24+330,350,650),target=routePointAtAlong(along+ahead);if(!target)return;
   if(P.center&&haversineM(P.center,target)<240){P.lastAt=now;return}
   P.loading=true;P.lastAt=now;
-  const b=bbox(target.lat,target.lon,.32),q=`[out:json][timeout:25];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b});way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="stop"](${b});node["highway"="give_way"](${b});node["traffic_calming"](${b});node["barrier"="bollard"](${b});node["amenity"="bench"](${b});node["highway"="bus_stop"](${b});node["traffic_sign"](${b}););out body geom;`;
+  const b=bbox(target.lat,target.lon,.32),q=`[out:json][timeout:25];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b});way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});way["amenity"="parking"](${b});way["highway"="pedestrian"](${b});way["railway"~"^(tram|light_rail)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="stop"](${b});node["highway"="give_way"](${b});node["traffic_calming"](${b});node["barrier"="bollard"](${b});node["amenity"="bench"](${b});node["highway"="bus_stop"](${b});node["traffic_sign"](${b}););out body geom;`;
   try{
     const data=await fetchOverpass(q),roads=[],signals=[],env=[];
     for(const e of data.elements||[]){
@@ -1568,12 +1572,27 @@ function drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day){
   if(o.name&&base.some(p=>p.ppm>2.7)&&S.scene3d.quality!=="LOW"){const near=base.reduce((a,b)=>a.forward<b.forward?a:b);c.fillStyle="#fff";c.font="800 8px -apple-system,Arial";c.textAlign="center";c.fillText(o.name.slice(0,18),near.x,near.y-clamp(o.height*near.ppm*.82,5,h*.44)-4)}
   return true
 }
+function drawRailGeometry(c,o,pos,heading,w,h,hz){
+  const pts=projectGroundLine(o.geometry,pos,heading,w,h,hz);if(pts.length<2)return false;
+  c.save();drawPathLine(c,pts,isDayScene()?"rgba(55,58,60,.95)":"rgba(18,21,23,.95)",4);
+  c.strokeStyle=isDayScene()?"rgba(205,210,210,.9)":"rgba(145,155,160,.76)";c.lineWidth=1.1;
+  for(const off of [-1.25,1.25]){c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0]+off,p[1]):c.moveTo(p[0]+off,p[1]));c.stroke()}
+  if(S.scene3d.quality==="HIGH"){c.strokeStyle="rgba(75,65,55,.55)";c.lineWidth=.8;for(let i=1;i<pts.length;i+=2){const p=pts[i];c.beginPath();c.moveTo(p[0]-4,p[1]);c.lineTo(p[0]+4,p[1]);c.stroke()}}
+  c.restore();return true
+}
+function drawUrbanGroundArea(c,o,pos,heading,w,h,hz,day){
+  const shape=projectGroundShape(o.geometry,pos,heading,w,h,hz);if(!shape)return false;const pts=shape.map(p=>[p.x,p.y]);
+  const fill=o.kind==="parking_area"?(day?"#686d6f":"#32383b"):(day?"#a59f92":"#57534d");poly(c,pts,fill);
+  c.save();c.strokeStyle=o.kind==="parking_area"?"rgba(235,238,238,.25)":"rgba(245,240,225,.22)";c.lineWidth=1;c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.stroke();c.restore();return true
+}
 function drawEnvironment(c,w,h,hz,heading){
   const day=isDayScene(),pos=S.demo?null:scenePosition();if(!pos||!S.environment.length){drawFallbackCity(c,w,h,hz);return}
   const objs=visibleEnvironment(pos,heading);let labels=0;
   for(const o of objs){
     if(["crossing","sign","stop","give_way","bollard","bench","hydrant","calming","hedge","barrier"].includes(o.kind))continue;
     const p=perspectiveEnvPoint(o.side,o.forward,w,h,hz);if(!p)continue;
+    if(o.kind==="rail"){if(drawRailGeometry(c,o,pos,heading,w,h,hz))continue}
+    if(o.kind==="parking_area"||o.kind==="pedestrian_area"){if(o.geometry&&drawUrbanGroundArea(c,o,pos,heading,w,h,hz,day))continue}
     if(o.kind==="green"||o.kind==="water"){
       if(o.geometry&&drawGroundArea(c,o,pos,heading,w,h,hz,day))continue;
       const ww=clamp((o.footprint||18)*p.ppm*1.4,10,180),hh=clamp(ww*.16,3,26);c.fillStyle=o.kind==="water"?(day?"#6c9eaa":"#284b56"):(day?"#5d815f":"#304b38");c.beginPath();c.ellipse(p.x,p.y,ww/2,hh/2,0,0,Math.PI*2);c.fill()
