@@ -1841,6 +1841,17 @@ function drawSceneLabels(c,w,h,hz,path,d,metrics){
   if(current&&current!=="Route sans nom"&&S.scene3d.quality!=="LOW"){const p=screenAtForward(path,58,w,h,hz),txt=current.slice(0,24);c.save();c.font="800 9px -apple-system,Arial";const tw=c.measureText?c.measureText(txt).width:txt.length*5.2;c.fillStyle="rgba(10,15,18,.62)";c.fillRect(p.x-tw/2-5,p.y-11,tw+10,15);c.fillStyle="rgba(255,255,255,.88)";c.textAlign="center";c.fillText(txt,p.x,p.y);c.restore()}
   if(next&&Number.isFinite(d.distance)&&d.distance<210){const p=screenAtForward(path,clamp(d.distance,25,195),w,h,hz),txt=next.slice(0,25);c.save();c.font="900 8px -apple-system,Arial";const tw=c.measureText?c.measureText(txt).width:txt.length*5;c.fillStyle="rgba(45,225,130,.88)";c.fillRect(p.x-tw/2-5,p.y-32,tw+10,14);c.fillStyle="#07120d";c.textAlign="center";c.fillText(txt,p.x,p.y-22);c.restore()}
 }
+function drawSpecialLaneMarkings(c,w,h,hz,path,d,metrics,bus,access){
+  const mark=(text,offset,forward=32,alpha=.72)=>{
+    const p=screenAtForward(path,forward,w,h,hz),x=p.x+offset*p.ppm;c.save();c.fillStyle=`rgba(255,255,255,${alpha})`;c.font=`900 ${clamp(6+p.ppm*.45,7,12)}px -apple-system,Arial`;c.textAlign="center";c.fillText(text,x,p.y);c.restore()
+  };
+  for(const idx of bus){if(metrics.centers[idx-1]!==undefined)mark("BUS",metrics.centers[idx-1],30+idx*4,.66)}
+  for(let idx=1;idx<=metrics.total;idx++)if(access[idx-1]===false&&metrics.centers[idx-1]!==undefined)mark("RÉSERVÉE",metrics.centers[idx-1],47+idx*3,.62);
+  if(metrics.cycleLeft.width>0)mark("VÉLO",(metrics.asphaltMin+metrics.curbMin)/2,42,.65);
+  if(metrics.cycleRight.width>0)mark("VÉLO",(metrics.asphaltMax+metrics.curbMax)/2,46,.65);
+  if(metrics.parkingLeft>0)mark("P",(metrics.driveMin+metrics.asphaltMin)/2,58,.52);
+  if(metrics.parkingRight>0)mark("P",(metrics.driveMax+metrics.asphaltMax)/2,62,.52)
+}
 function drawCenterTreatment(c,w,h,hz,path,metrics){
   if(metrics.centerZone){
     c.save();c.globalAlpha=.12;poly(c,[...offsetScreenPath(path,metrics.centerZone.min,w,h,hz),...offsetScreenPath(path,metrics.centerZone.max,w,h,hz).reverse()],"#d7ba68");c.globalAlpha=1;
@@ -1931,6 +1942,7 @@ function draw3D(d={}){
   const bus=[...new Set([...specialLaneIndexes("bus",total),...specialLaneIndexes("psv",total)])],access=Array.isArray(d.accessible)&&d.accessible.length===total?d.accessible:Array.from({length:total},()=>true);
   for(const idx of bus){if(idx<1||idx>total)continue;const l=metrics.ownBounds[idx-1],rr=metrics.ownBounds[idx];c.globalAlpha=.20;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,rr,w,h,hz).reverse()],"#4d8fb8");c.globalAlpha=1}
   for(let idx=1;idx<=total;idx++)if(access[idx-1]===false){const l=metrics.ownBounds[idx-1],rr=metrics.ownBounds[idx];c.globalAlpha=.18;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,rr,w,h,hz).reverse()],"#7e3540");c.globalAlpha=1}
+  drawSpecialLaneMarkings(c,w,h,hz,path,d,metrics,bus,access);
   const compatible=Array.isArray(d.compatible)?d.compatible.filter(i=>i>=1&&i<=total&&access[i-1]!==false):[];
   for(const idx of compatible){const l=metrics.ownBounds[idx-1],rr=metrics.ownBounds[idx];c.globalAlpha=.08;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,rr,w,h,hz).reverse()],"#64ef9b");c.globalAlpha=1}
   if(d.current&&d.current!==rec&&metrics.ownBounds[d.current]!==undefined){const l=metrics.ownBounds[d.current-1],rr=metrics.ownBounds[d.current];c.globalAlpha=.10;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,rr,w,h,hz).reverse()],"#4b9fff");c.globalAlpha=1}
