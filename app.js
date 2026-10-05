@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeLengthM:0,routeManeuvers:[],view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,compassHeading:null,compassActive:false,lastMatch:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
+const S={map:null,roads:[],signals:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,compassHeading:null,compassActive:false,lastMatch:null,previousMatch:null,matchQuality:0,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function setStatus(t){$("status").textContent=t}
 function roadName(r){const m={motorway:"Autoroute",trunk:"Voie rapide",primary:"Axe principal",secondary:"Route secondaire",tertiary:"Route tertiaire",residential:"Rue résidentielle",service:"Voie de service",unclassified:"Route",living_street:"Zone de rencontre"};return r?.tags?.name||r?.tags?.ref||m[r?.tags?.highway]||"Route sans nom"}
@@ -95,7 +95,44 @@ async function loadRoadData(lat,lon){
     if(!used)setStatus("Données OSM indisponibles — GPS toujours actif")
   }finally{S.roadLoading=false}
 }
-function nearestRoad(pos){let best=null;for(const road of S.roads){for(let i=0;i<road.coords.length-1;i++){const a=road.coords[i],b=road.coords[i+1],s=pointToSegment(pos,a,b);if(s.distance>CFG.maxRoadDistanceM)continue;const rb=bearing(a,b),pen=pos.speedMps>2&&Number.isFinite(pos.heading)?angleDiff(pos.heading,rb)/15:0,score=s.distance+pen;if(!best||score<best.score)best={road,distance:s.distance,nearest:s.nearest,roadBearing:rb,segmentIndex:i,segmentT:s.t,score}}}return best}
+function roadsConnected(a,b){
+  if(!a||!b||a.id===b.id)return a?.id===b?.id;
+  const ae=[a.coords?.[0],a.coords?.[a.coords.length-1]].filter(Boolean),be=[b.coords?.[0],b.coords?.[b.coords.length-1]].filter(Boolean);
+  for(const x of ae)for(const y of be)if(haversineM(x,y)<13)return true;
+  return false
+}
+function roadClassPenalty(road){
+  const h=road?.tags?.highway||"";
+  return({motorway:0,trunk:0,primary:0,secondary:1,tertiary:2,residential:3,unclassified:4,service:7,living_street:6})[h]??5
+}
+function nearestRoad(pos){
+  let best=null,second=null;
+  const prev=S.lastMatch,maxD=Math.max(CFG.maxRoadDistanceM,Math.min(70,(pos.accuracy||20)*2.2));
+  for(const road of S.roads){
+    for(let i=0;i<road.coords.length-1;i++){
+      const a=road.coords[i],b=road.coords[i+1],seg=pointToSegment(pos,a,b);if(seg.distance>maxD)continue;
+      const rb=bearing(a,b),dirHead=String(road.tags.oneway||"").toLowerCase()==="-1"?(rb+180)%360:rb;
+      const headingErr=pos.speedMps>1.2&&Number.isFinite(pos.heading)?Math.min(angleDiff(pos.heading,dirHead),angleDiff(pos.heading,(dirHead+180)%360)):0;
+      let score=seg.distance+headingErr*(pos.speedMps>3?.18:.10)+roadClassPenalty(road);
+      if(prev){
+        if(prev.road.id===road.id)score-=9;
+        else if(roadsConnected(prev.road,road))score-=3;
+        else if(pos.speedMps>2.5)score+=8
+      }
+      if(S.routeCoords.length){
+        const rp=routeProjection({lat:seg.nearest.lat,lon:seg.nearest.lon},null);
+        if(rp)score+=Math.min(30,rp.distance*.7)
+      }
+      const cand={road,distance:seg.distance,nearest:seg.nearest,roadBearing:rb,segmentIndex:i,segmentT:seg.t,headingError:headingErr,score};
+      if(!best||score<best.score){second=best;best=cand}else if(!second||score<second.score)second=cand
+    }
+  }
+  if(best){
+    const gap=second?second.score-best.score:25;
+    best.quality=clamp(Math.round(100-best.distance*1.4-best.headingError*.35+Math.min(18,gap)),0,100)
+  }
+  return best
+}
 function travelDirection(m,pos){
   const oneway=String(m.road.tags.oneway||"").toLowerCase();
   if(["yes","1","true"].includes(oneway))return"forward";
@@ -142,8 +179,35 @@ async function enableCompass(){
 }
 function smoothGps(raw){if(!S.gps)return raw;const acc=clamp(raw.accuracy,3,40),alpha=raw.speedMps>8?.5:raw.speedMps>2?.35:.22,weight=clamp(alpha*(12/acc),.12,.65);const sm={...raw,lat:S.gps.lat+(raw.lat-S.gps.lat)*weight,lon:S.gps.lon+(raw.lon-S.gps.lon)*weight};if(Number.isFinite(raw.heading)&&raw.speedMps>1.5){const a=rad(S.gps.heading||raw.heading),b=rad(raw.heading),x=Math.cos(a)*.65+Math.cos(b)*.35,y=Math.sin(a)*.65+Math.sin(b)*.35;sm.heading=(deg(Math.atan2(y,x))+360)%360}else sm.heading=Number.isFinite(S.compassHeading)?S.compassHeading:(S.gps.heading||raw.heading||0);return sm}
 function updateUserMarker(pos){const ll=[pos.lat,pos.lon];if(!S.userMarker){const icon=L.divIcon({className:"",html:'<div class="user-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]});S.userMarker=L.marker(ll,{icon,zIndexOffset:1000}).addTo(S.map);S.accuracyCircle=L.circle(ll,{radius:pos.accuracy||10,weight:1,color:"#1d79ff",fillColor:"#1d79ff",fillOpacity:.08}).addTo(S.map)}else{S.userMarker.setLatLng(ll);S.accuracyCircle.setLatLng(ll).setRadius(pos.accuracy||10)}const dot=S.userMarker.getElement()?.querySelector(".user-dot");if(dot)dot.style.transform=`rotate(${Math.round(pos.heading||S.heading||0)}deg)`;if(S.view==="map"&&S.followMap)S.map.setView(ll,17,{animate:true})}
-function routeProjection(pos){if(!S.routeCoords.length)return null;let best=null,cum=0;for(let i=0;i<S.routeCoords.length-1;i++){const a=S.routeCoords[i],b=S.routeCoords[i+1],segLen=haversineM(a,b),p=pointToSegment(pos,a,b);if(!best||p.distance<best.distance)best={distance:p.distance,index:i,t:p.t,along:cum+segLen*p.t,nearest:p.nearest};cum+=segLen}if(best){best.total=cum;best.remaining=Math.max(0,cum-best.along);best.progress=cum?best.along/cum:0}return best}
-function buildRouteManeuvers(){S.routeManeuvers=[];const steps=S.route?.legs?.[0]?.steps||[];for(const step of steps){const loc=step.maneuver?.location;if(!loc)continue;const point={lat:loc[1],lon:loc[0]},proj=routeProjection(point);if(!proj)continue;S.routeManeuvers.push({step,along:proj.along,point,type:step.maneuver?.type||"",modifier:step.maneuver?.modifier||"straight"})}S.routeManeuvers.sort((a,b)=>a.along-b.along)}
+function buildRouteCum(){
+  S.routeCum=[0];let cum=0;
+  for(let i=0;i<S.routeCoords.length-1;i++){cum+=haversineM(S.routeCoords[i],S.routeCoords[i+1]);S.routeCum.push(cum)}
+  S.routeLengthM=cum||S.routeLengthM
+}
+function routeProjection(pos,hintAlong=null){
+  if(!S.routeCoords.length)return null;
+  let best=null;
+  for(let i=0;i<S.routeCoords.length-1;i++){
+    const a=S.routeCoords[i],b=S.routeCoords[i+1],segLen=haversineM(a,b),p=pointToSegment(pos,a,b),along=(S.routeCum[i]||0)+segLen*p.t;
+    let score=p.distance;
+    if(Number.isFinite(hintAlong)){
+      const delta=along-hintAlong;
+      if(delta<-45)score+=Math.min(180,Math.abs(delta)*1.8);
+      else if(delta>Math.max(180,(S.gps?.speedMps||0)*14+120))score+=Math.min(100,(delta-120)*.25)
+    }
+    if(!best||score<best.score)best={distance:p.distance,index:i,t:p.t,along,nearest:p.nearest,score}
+  }
+  if(best){const total=S.routeCum[S.routeCum.length-1]||S.routeLengthM||0;best.total=total;best.remaining=Math.max(0,total-best.along);best.progress=total?best.along/total:0}
+  return best
+}
+function liveRouteProjection(pos){
+  const p=routeProjection(pos,S.lastRouteAlong);
+  if(p&&p.distance<80){
+    if(S.lastRouteAlong===null||p.along>=S.lastRouteAlong-35||p.distance<12)S.lastRouteAlong=p.along;
+  }
+  return p
+}
+function buildRouteManeuvers(){S.routeManeuvers=[];const steps=S.route?.legs?.[0]?.steps||[];for(const step of steps){const loc=step.maneuver?.location;if(!loc)continue;const point={lat:loc[1],lon:loc[0]},proj=routeProjection(point,null);if(!proj)continue;S.routeManeuvers.push({step,along:proj.along,point,type:step.maneuver?.type||"",modifier:step.maneuver?.modifier||"straight"})}S.routeManeuvers.sort((a,b)=>a.along-b.along)}
 function maneuverTurn(m){
   const mod=m?.modifier||"straight",type=m?.type||"";
   if(type.includes("roundabout")||type==="rotary")return"roundabout";
@@ -167,7 +231,7 @@ function maneuverInstruction(m,turn){
   return"Continue tout droit"
 }
 function nextInstruction(pos){
-  const proj=routeProjection(pos);if(!proj)return{instruction:"Suivre l’itinéraire",detail:"",turn:"through",distance:null};
+  const proj=liveRouteProjection(pos);if(!proj)return{instruction:"Suivre l’itinéraire",detail:"",turn:"through",distance:null};
   const dest=S.destination?haversineM(pos,S.destination):Infinity;
   if(proj.remaining<35||dest<35)return{instruction:"Destination atteinte",detail:"Tu es arrivé",turn:"through",distance:0,remaining:0,progress:1,offRoute:proj.distance,arrived:true,maneuverId:"arrive"};
   let candidate=null;
@@ -190,7 +254,7 @@ function adviceText(lane,nav){
 }
 function relevantSignal(pos,m){let best=null;const heading=m?(travelDirection(m,pos)==="forward"?m.roadBearing:(m.roadBearing+180)%360):pos.heading;for(const s of S.signals){const d=haversineM(pos,s);if(d>450)continue;const a=angleDiff(heading,bearing(pos,s));if(a>65)continue;const score=d+a*2;if(!best||score<best.score)best={...s,distance:d,score}}return best}
 async function maybeReroute(pos,nav){if(!S.route||!S.destination||!nav)return;if((nav.offRoute||0)>CFG.offRouteM)S.offRouteHits++;else S.offRouteHits=0;if(S.offRouteHits<3)return;const now=Date.now();if(now-S.lastRerouteAt<CFG.rerouteCooldownMs)return;S.lastRerouteAt=now;S.offRouteHits=0;setStatus("Hors itinéraire · recalcul automatique…");await calculateRoute(S.destination.lat,S.destination.lon,true)}
-function updateUi(pos){$("speed").textContent=Math.round(pos.speedMps*3.6);const m=nearestRoad(pos);S.lastMatch=m;if(!m){$("road").textContent="—";$("lane").textContent="—";$("confidence").textContent="—";$("advice").textContent="Route à confirmer";$("source").textContent="SOURCE GPS";updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateDiagnostics(pos,null,null,null);return}const lane=stabilizeLane(estimateLane(m,pos),m),nav=S.route?nextInstruction(pos):null,sig=relevantSignal(pos,m);S.lastLane=lane;S.lastNav=nav;updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);voiceCue(nav);$("road").textContent=roadName(m.road);$("lane").textContent=lane.index?`${lane.index}/${lane.total}`:(lane.total?`?/${lane.total}`:"—");$("confidence").textContent=`${lane.confidence}%`;$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";$("source").textContent=lane.index?"ESTIMATION":"PAS ASSEZ PRÉCIS";if(nav){$("instruction").textContent=nav.instruction;$("detail").textContent=`${nav.detail} · ${lane.reason}`;$("advice").textContent=adviceText(lane,nav);if(nav.arrived){S.arrived=true;$("progressWrap").classList.remove("hidden");$("progressBar").style.width="100%";$("routeMeta").textContent="Arrivée";setStatus("Destination atteinte")}else if(Number.isFinite(nav.progress)){S.arrived=false;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${clamp(nav.progress*100,0,100)}%`;const rem=nav.remaining??S.route.distance;const eta=S.route?.distance?S.route.duration*(rem/S.route.distance):rem/Math.max(6,pos.speedMps||10);$("routeMeta").textContent=`${(rem/1000).toFixed(1)} km restants · ~${Math.max(1,Math.round(eta/60))} min`}}else{$("instruction").textContent=roadName(m.road);$("detail").textContent=lane.reason;$("advice").textContent=adviceText(lane,null)}draw3D({lane:lane.index||2,total:lane.total||3,recommended:nav?recommendedLane(lane,nav.turn)||(lane.index||2):(lane.index||2),turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:sig});updateDiagnostics(pos,m,lane,nav);maybeReroute(pos,nav)}
+function updateUi(pos){$("speed").textContent=Math.round(pos.speedMps*3.6);const m=nearestRoad(pos);S.previousMatch=S.lastMatch;S.lastMatch=m;S.matchQuality=m?.quality||0;if(!m){$("road").textContent="—";$("lane").textContent="—";$("confidence").textContent="—";$("advice").textContent="Route à confirmer";$("source").textContent="SOURCE GPS";updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateDiagnostics(pos,null,null,null);return}const lane=stabilizeLane(estimateLane(m,pos),m),nav=S.route?nextInstruction(pos):null,sig=relevantSignal(pos,m);S.lastLane=lane;S.lastNav=nav;updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);voiceCue(nav);$("road").textContent=roadName(m.road);$("lane").textContent=lane.index?`${lane.index}/${lane.total}`:(lane.total?`?/${lane.total}`:"—");$("confidence").textContent=`${lane.confidence}%`;$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";$("source").textContent=lane.index?"ESTIMATION":"PAS ASSEZ PRÉCIS";if(nav){$("instruction").textContent=nav.instruction;$("detail").textContent=`${nav.detail} · ${lane.reason}`;$("advice").textContent=adviceText(lane,nav);if(nav.arrived){S.arrived=true;$("progressWrap").classList.remove("hidden");$("progressBar").style.width="100%";$("routeMeta").textContent="Arrivée";setStatus("Destination atteinte")}else if(Number.isFinite(nav.progress)){S.arrived=false;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${clamp(nav.progress*100,0,100)}%`;const rem=nav.remaining??S.route.distance;const eta=S.route?.distance?S.route.duration*(rem/S.route.distance):rem/Math.max(6,pos.speedMps||10);$("routeMeta").textContent=`${(rem/1000).toFixed(1)} km restants · ~${Math.max(1,Math.round(eta/60))} min`}}else{$("instruction").textContent=roadName(m.road);$("detail").textContent=lane.reason;$("advice").textContent=adviceText(lane,null)}draw3D({lane:lane.index||2,total:lane.total||3,recommended:nav?recommendedLane(lane,nav.turn)||(lane.index||2):(lane.index||2),turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:sig});updateDiagnostics(pos,m,lane,nav);maybeReroute(pos,nav)}
 async function startGps(){enableCompass();if(!window.isSecureContext){setStatus("GPS : ouvre bien l’adresse HTTPS GitHub Pages.");return}if(!navigator.geolocation){setStatus("GPS non disponible.");return}$("permission")?.remove();$("gpsBtn").classList.add("active");$("gpsBtn").querySelector("span").textContent="Actif";if(S.gpsWatch!==null)navigator.geolocation.clearWatch(S.gpsWatch);S.gpsWatch=navigator.geolocation.watchPosition(async p=>{const c=p.coords,raw={lat:c.latitude,lon:c.longitude,speedMps:Math.max(0,Number.isFinite(c.speed)?c.speed:0),heading:Number.isFinite(c.heading)&&c.heading>=0?c.heading:(Number.isFinite(S.compassHeading)?S.compassHeading:S.heading),accuracy:Number.isFinite(c.accuracy)?c.accuracy:999};S.rawGps=raw;S.gps=smoothGps(raw);S.heading=S.gps.heading;updateUserMarker(S.gps);if(!S.areaCenter||haversineM(S.gps,S.areaCenter)>CFG.reloadAfterM)await loadRoadData(S.gps.lat,S.gps.lon);if(!S.environmentCenter||haversineM(S.gps,S.environmentCenter)>240)loadEnvironmentData(S.gps.lat,S.gps.lon);updateUi(S.gps);recordSample();if(S.destination&&!S.route&&!S.routeLoading&&Date.now()-S.lastRouteAttemptAt>15000)calculateRoute(S.destination.lat,S.destination.lon,false);setStatus(`GPS ±${Math.round(raw.accuracy)} m · ${S.roads.length} routes`)},e=>setStatus("GPS : "+e.message),{enableHighAccuracy:true,maximumAge:500,timeout:15000})}
 async function calculateRoute(lat,lon,isReroute=false){
   if(!S.gps){S.destination={lat,lon};setStatus("Destination mémorisée · en attente du GPS.");return}
@@ -203,7 +267,7 @@ async function calculateRoute(lat,lon,isReroute=false){
   try{
     const o=S.gps,url=`${CFG.router}/${o.lon},${o.lat};${lon},${lat}?overview=full&geometries=geojson&steps=true`,r=await fetch(url,{signal:ctrl.signal});
     if(!r.ok)throw Error(`HTTP ${r.status}`);const d=await r.json();if(d.code!=="Ok"||!d.routes?.length)throw Error("Aucun itinéraire");
-    S.route=d.routes[0];S.routeCoords=S.route.geometry.coordinates.map(c=>({lat:c[1],lon:c[0]}));S.routeLengthM=S.route.distance;buildRouteManeuvers();S.arrived=false;S.lastVoiceKey="";
+    S.route=d.routes[0];S.routeCoords=S.route.geometry.coordinates.map(c=>({lat:c[1],lon:c[0]}));S.routeLengthM=S.route.distance;buildRouteCum();S.lastRouteAlong=null;buildRouteManeuvers();S.arrived=false;S.lastVoiceKey="";
     if(S.routeLayer)S.map.removeLayer(S.routeLayer);S.routeLayer=L.polyline(S.routeCoords.map(p=>[p.lat,p.lon]),{color:"#fff",weight:7,opacity:.93,className:"route-line"}).addTo(S.map);
     if(!isReroute){S.followMap=false;document.body.classList.add("map-free");S.map.fitBounds(S.routeLayer.getBounds(),{padding:[45,45]})};
     $("routeMeta").textContent=`${(S.route.distance/1000).toFixed(1)} km · ~${Math.max(1,Math.round(S.route.duration/60))} min`;$("progressWrap").classList.remove("hidden");
@@ -212,7 +276,7 @@ async function calculateRoute(lat,lon,isReroute=false){
   finally{clearTimeout(timer);S.routeLoading=false}
 }
 function setDestination(lat,lon,label=null){S.destinationLabel=label;calculateRoute(lat,lon,false)}
-function clearRoute(){S.route=null;S.routeCoords=[];S.routeManeuvers=[];S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
+function clearRoute(){S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.lastRouteAlong=null;S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
 function speakNav(text){
   if(!S.voiceEnabled||!("speechSynthesis"in window)||!text)return;
   try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang="fr-FR";u.rate=.98;u.pitch=1;window.speechSynthesis.speak(u)}catch(_){}
@@ -369,7 +433,7 @@ function cycleLaneSides(){
 function sceneHeading(){
   if(S.demo)return 0;
   if(S.gps&&S.routeCoords.length){
-    const p=routeProjection(S.gps);
+    const p=routeProjection(S.gps,S.lastRouteAlong);
     if(p&&S.routeCoords[p.index+1])return bearing(p.nearest,S.routeCoords[p.index+1])
   }
   if(S.lastMatch&&S.gps)return travelDirection(S.lastMatch,S.gps)==="forward"?S.lastMatch.roadBearing:(S.lastMatch.roadBearing+180)%360;
@@ -383,7 +447,7 @@ function scenePath(maxM=280){
   if(!S.gps)return[{side:0,forward:0},{side:0,forward:maxM}];
   const heading=sceneHeading(),geo=[];
   if(S.routeCoords.length){
-    const p=routeProjection(S.gps);
+    const p=routeProjection(S.gps,S.lastRouteAlong);
     if(p){geo.push(p.nearest);for(let i=p.index+1;i<S.routeCoords.length&&geo.length<100;i++)geo.push(S.routeCoords[i])}
   }else if(S.lastMatch){
     const m=S.lastMatch,coords=m.road.coords,dir=travelDirection(m,S.gps),i=m.segmentIndex??0;geo.push(m.nearest);
