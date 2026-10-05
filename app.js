@@ -60,6 +60,26 @@ function directionalLaneValue(tags,key,dir){
 }
 function laneTurns(tags,dir){const a=pipe(directionalLaneValue(tags,"turn:lanes",dir));return a.length?a:Array.from({length:Math.max(1,laneCount(tags,dir))},()=>"through")}
 function laneChanges(tags,dir){return pipe(directionalLaneValue(tags,"change:lanes",dir))}
+function laneAccess(tags,dir,total){
+  if(!total)return[];
+  const keys=["motor_vehicle:lanes","vehicle:lanes","access:lanes"],blocked=new Set(["no","private","customers","delivery","agricultural","forestry"]);
+  for(const key of keys){
+    const vals=pipe(directionalLaneValue(tags,key,dir));if(vals.length!==total)continue;
+    return vals.map(v=>{const parts=String(v).toLowerCase().split(";").map(x=>x.trim());return!parts.some(x=>blocked.has(x))})
+  }
+  return Array.from({length:total},()=>true)
+}
+function laneRoutePlan(lane,turn){
+  if(!lane?.total)return{target:null,next:null,compatible:[],accessible:[]};
+  const accessible=lane.accessible?.length?lane.accessible:Array.from({length:lane.total},()=>true);
+  let compatible=compatibleLanes(lane,turn).filter(i=>accessible[i-1]!==false);
+  if(!compatible.length&&turn==="through")compatible=accessible.map((ok,i)=>ok?i+1:null).filter(Boolean);
+  if(!compatible.length)return{target:null,next:null,compatible:[],accessible};
+  const current=lane.index||null,target=current?compatible.reduce((a,b)=>Math.abs(b-current)<Math.abs(a-current)?b:a):compatible[0];
+  if(!current||current===target)return{target,next:target,compatible,accessible};
+  const step=current+(target>current?1:-1),legal=laneChangeAllowed(lane,current,step)&&accessible[step-1]!==false;
+  return{target,next:legal?step:current,compatible,accessible,blocked:!legal}
+}
 function maxspeedKph(tags){const raw=String(tags?.maxspeed||"").trim().toLowerCase();if(!raw)return null;const n=parseFloat(raw);if(Number.isFinite(n))return Math.round(raw.includes("mph")?n*1.60934:n);return({"fr:urban":50,"fr:rural":80,"fr:trunk":110,"fr:motorway":130})[raw]||null}
 function updateSpeedLimit(match,pos){const el=$("limitBadge"),limit=match?maxspeedKph(match.road.tags):null;if(!limit){el.classList.add("hidden");el.classList.remove("alert");return}el.textContent=String(limit);el.classList.remove("hidden");el.classList.toggle("alert",pos.speedMps*3.6>limit+5)}
 function turnGlyph(raw){const vals=String(raw||"through").split(";").map(v=>v.trim());const glyph=v=>v.includes("uturn")||v.includes("reverse")?"↶":v.includes("left")?"↰":v.includes("right")?"↱":"↑";return [...new Set(vals.map(glyph))].join("")}
@@ -250,7 +270,7 @@ function estimateLane(m,pos){
   const dir=travelDirection(m,pos),total=laneCount(m.road.tags,dir),rb=dir==="forward"?m.roadBearing:(m.roadBearing+180)%360,acc=Number.isFinite(pos.accuracy)?pos.accuracy:999,headErr=Number.isFinite(pos.heading)?angleDiff(pos.heading,rb):90;
   const mapQ=Number.isFinite(m.quality)?m.quality:50,confidence=clamp(Math.round(92-Math.min(m.distance,40)*1.1-Math.min(acc,40)*2.25-Math.min(headErr,90)*.22+(mapQ-50)*.18),0,100);
   const hasTurnLanes=Boolean(directionalLaneValue(m.road.tags,"turn:lanes",dir)),geom=laneGeometry(m.road.tags,dir,total);
-  const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),geometry:geom};
+  const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),accessible:laneAccess(m.road.tags,dir,total),geometry:geom};
   if(!total)return{...base,index:null,candidateIndex:null,reason:"Nombre de voies absent dans OSM"};
   const off=signedLateralM(pos,m.nearest,rb),candidateIndex=laneFromOffset(geom,off);
   if(!candidateIndex)return{...base,index:null,candidateIndex:null,lateralM:off,reason:"Position latérale incompatible avec la géométrie des voies"};
@@ -503,17 +523,28 @@ function nextInstruction(pos){
   const distance=Math.max(0,candidate.along-proj.along),turn=maneuverTurn(candidate),instruction=maneuverInstruction(candidate,turn);
   return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
 }
-function compatibleLanes(lane,turn){if(!lane.total)return[];const desired=turn||"through",out=[];lane.turns.forEach((raw,i)=>{const vals=raw.split(";").map(v=>v.trim());if(vals.includes(desired)||(desired==="through"&&(vals.includes("through")||vals.includes("straight"))))out.push(i+1)});return out}
-function recommendedLane(lane,turn){if(turn&&turn!=="through"&&!lane.hasTurnLanes)return null;const c=compatibleLanes(lane,turn);if(!c.length)return turn==="through"?(lane.index||null):null;if(!lane.index)return c[0];return c.reduce((a,b)=>Math.abs(b-lane.index)<Math.abs(a-lane.index)?b:a)}
+function compatibleLanes(lane,turn){
+  if(!lane.total)return[];
+  const desired=turn||"through",out=[],access=lane.accessible?.length?lane.accessible:Array.from({length:lane.total},()=>true);
+  lane.turns.forEach((raw,i)=>{if(access[i]===false)return;const vals=raw.split(";").map(v=>v.trim());if(vals.includes(desired)||(desired==="through"&&(vals.includes("through")||vals.includes("straight"))))out.push(i+1)});
+  return out
+}
+function recommendedLane(lane,turn){
+  if(turn&&turn!=="through"&&!lane.hasTurnLanes)return null;
+  return laneRoutePlan(lane,turn).target
+}
 function adviceText(lane,nav){
+  if(lane?.index&&lane.accessible?.[lane.index-1]===false)return"⚠️ VOIE CARTOGRAPHIÉE COMME RESTREINTE AUX VOITURES";
   if(!nav)return lane.index?`🟢 VOIE PROBABLE ${lane.index}/${lane.total}`:(lane.total?`🟡 ${lane.total} VOIES · POSITION INCONNUE`:"Voies non renseignées");
   if(nav.arrived)return"🏁 DESTINATION ATTEINTE";
   if(nav.turn!=="through"&&!lane.hasTurnLanes){const dir=nav.turn==="left"?"À GAUCHE":nav.turn==="right"?"À DROITE":nav.turn==="roundabout"?"AU ROND-POINT":"POUR LA MANŒUVRE";return `↪ PRÉPARE-TOI ${dir} · VOIE NON CARTOGRAPHIÉE`}
-  const rec=recommendedLane(lane,nav.turn),d=nav.distance??9999;if(!rec)return lane.total?`🟡 ${lane.total} VOIES · POSITION INCONNUE`:"Voies non renseignées";
-  if(lane.index&&rec!==lane.index&&!laneChangeAllowed(lane,lane.index,rec))return"⚠️ CHANGEMENT DE VOIE CARTOGRAPHIÉ COMME INTERDIT ICI";
+  const plan=laneRoutePlan(lane,nav.turn),target=plan.target,d=nav.distance??9999;
+  if(!target)return lane.total?`🟡 ${lane.total} VOIES · AUCUNE VOIE COMPATIBLE CARTOGRAPHIÉE`:"Voies non renseignées";
+  if(lane.index&&target!==lane.index&&plan.blocked)return"⚠️ CHANGEMENT DE VOIE CARTOGRAPHIÉ COMME INTERDIT ICI";
   const urgency=d>350?"PRÉPARE":d>120?"REJOINS":"MAINTENANT";
-  if(lane.index&&rec===lane.index)return d<120?`🟢 RESTE VOIE ${lane.index}/${lane.total}`:`🟢 BONNE VOIE ${lane.index}/${lane.total}`;
-  return lane.index?`➡️ ${urgency} VOIE ${rec}/${lane.total}`:`➡️ VOIE CONSEILLÉE ${rec}/${lane.total}`
+  if(lane.index&&target===lane.index)return d<120?`🟢 RESTE VOIE ${lane.index}/${lane.total}`:`🟢 BONNE VOIE ${lane.index}/${lane.total}`;
+  if(lane.index&&plan.next&&plan.next!==target)return `➡️ ${urgency} D’ABORD VOIE ${plan.next}/${lane.total} · CIBLE ${target}/${lane.total}`;
+  return lane.index?`➡️ ${urgency} VOIE ${target}/${lane.total}`:`➡️ VOIE CONSEILLÉE ${target}/${lane.total}`
 }
 function relevantSignal(pos,m){
   let best=null;
@@ -814,7 +845,7 @@ function advanceVisualGps(now){
 }
 function currentDrawState(){
   const lane=S.lastLane,nav=S.lastNav,pos=scenePosition();
-  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:nav&&lane?recommendedLane(lane,nav.turn)||(lane.index||2):(lane?.index||2),compatible:nav&&lane&&lane.hasTurnLanes?compatibleLanes(lane,nav.turn):[],turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:S.lastSignal}
+  const plan=nav&&lane?laneRoutePlan(lane,nav.turn):null;return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:S.lastSignal}
 }
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);
