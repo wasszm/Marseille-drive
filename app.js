@@ -225,21 +225,22 @@ function scenePath(maxM=280){
   const heading=sceneHeading(),geo=[];
   if(S.routeCoords.length){
     const p=routeProjection(S.gps);
-    if(p){geo.push(p.nearest);for(let i=p.index+1;i<S.routeCoords.length&&geo.length<80;i++){geo.push(S.routeCoords[i]);if(haversineM(S.gps,S.routeCoords[i])>maxM+70)break}}
+    if(p){geo.push(p.nearest);for(let i=p.index+1;i<S.routeCoords.length&&geo.length<100;i++)geo.push(S.routeCoords[i])}
   }else if(S.lastMatch){
     const m=S.lastMatch,coords=m.road.coords,dir=travelDirection(m,S.gps),i=m.segmentIndex??0;geo.push(m.nearest);
-    if(dir==="forward"){for(let j=i+1;j<coords.length&&geo.length<70;j++){geo.push(coords[j]);if(haversineM(S.gps,coords[j])>maxM+70)break}}
-    else{for(let j=i;j>=0&&geo.length<70;j--){geo.push(coords[j]);if(haversineM(S.gps,coords[j])>maxM+70)break}}
+    if(dir==="forward")for(let j=i+1;j<coords.length&&geo.length<90;j++)geo.push(coords[j]);
+    else for(let j=i;j>=0&&geo.length<90;j--)geo.push(coords[j])
   }
   if(geo.length<2)return[{side:0,forward:0},{side:0,forward:maxM}];
-  const raw=[{side:0,forward:0}];
-  for(const p of geo){const q=geoToLocal(S.gps,heading,p);if(q.forward>-8&&q.forward<maxM+35&&Math.abs(q.side)<170)raw.push(q)}
-  raw.sort((a,b)=>a.forward-b.forward);
+  const raw=[{side:0,forward:0}];let cum=0,prev=geo[0];
+  for(let i=1;i<geo.length;i++){
+    const p=geo[i];cum+=haversineM(prev,p);prev=p;if(cum>maxM+35)break;
+    const local=geoToLocal(S.gps,heading,p);if(Math.abs(local.side)<190)raw.push({side:local.side,forward:cum})
+  }
   const out=[];
   for(let i=0;i<raw.length;i++){
-    const a=raw[Math.max(0,i-1)],b=raw[i],c=raw[Math.min(raw.length-1,i+1)];
-    const side=(a.side+b.side*2+c.side)/4;
-    if(!out.length||b.forward-out[out.length-1].forward>2)out.push({side,forward:Math.max(0,b.forward)})
+    const a=raw[Math.max(0,i-1)],b=raw[i],c=raw[Math.min(raw.length-1,i+1)],side=(a.side+b.side*2+c.side)/4;
+    if(!out.length||b.forward-out[out.length-1].forward>1.5)out.push({side,forward:b.forward})
   }
   if(out.length<2)out.push({side:0,forward:maxM});
   return out
