@@ -6,7 +6,7 @@ const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGp
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
-laneFilter:{roadId:null,index:null,candidate:null,hits:0},scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.29,targetHorizon:.29,rangeM:300,frameInterval:34,lastAdjustAt:0}};
+laneFilter:{roadId:null,index:null,candidate:null,hits:0},scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.29,targetHorizon:.29,viewHeading:null,rangeM:300,frameInterval:34,lastAdjustAt:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function appNow(){return S.replayActive&&Number.isFinite(S.replayClock)?S.replayClock:Date.now()}
 function setStatus(t,ms=3200){
@@ -1419,14 +1419,13 @@ function renderLoop(now=performance.now()){
   if(S.view==="drive"&&!S.demo&&now-S.lastRenderAt>(S.scene3d.frameInterval||50)){S.lastRenderAt=now;draw3D(currentDrawState())}
   S.renderRaf=requestAnimationFrame(renderLoop)
 }
-function sceneHeading(){
-  if(S.demo)return 0;
-  const pos=scenePosition();
+function rawSceneHeading(){
+  if(S.demo)return 0;const pos=scenePosition();
   if(S.routeCoords.length&&Number.isFinite(S.routeFilter.along)&&S.routeFilter.quality>=24){const rp=routePointAtAlong(S.routeFilter.along);if(rp)return rp.bearing}
   if(pos&&S.routeCoords.length){const p=routeProjection(pos,S.lastRouteAlong);if(p&&S.routeCoords[p.index+1])return bearing(p.nearest,S.routeCoords[p.index+1])}
-  const em=effectiveMatch();if(em&&pos)return travelDirection(em,pos)==="forward"?em.roadBearing:(em.roadBearing+180)%360;
-  return S.heading||0
+  const em=effectiveMatch();if(em&&pos)return travelDirection(em,pos)==="forward"?em.roadBearing:(em.roadBearing+180)%360;return S.heading||0
 }
+function sceneHeading(){return S.demo?0:(Number.isFinite(S.scene3d.viewHeading)?S.scene3d.viewHeading:rawSceneHeading())}
 function geoToLocal(origin,heading,p){const d=haversineM(origin,p),a=signedAngle(heading,bearing(origin,p));return{side:Math.sin(rad(a))*d,forward:Math.cos(rad(a))*d}}
 function scenePath(maxM=300){
   if(S.demo){const out=[];for(let f=0;f<=maxM;f+=12){const bend=Math.sin((f/115)+(S.demoT||0)*.05)*Math.min(10,f*.035);out.push({side:bend,forward:f})}return out}
@@ -1463,8 +1462,13 @@ function updateScene3dPerformance(ms){
 }
 function updateScene3dCamera(){
   const P=S.scene3d,speed=S.gps?.speedMps||0,turn=S.lastNav?.turn,dist=S.lastNav?.distance;
-  let target=.295-clamp(speed/45,0,.018);if(turn&&turn!=="through"&&Number.isFinite(dist)&&dist<140)target+=.008*(1-clamp(dist/140,0,1));
-  P.targetHorizon=clamp(target,.27,.305);P.horizonRatio+=(P.targetHorizon-P.horizonRatio)*.055
+  let targetH=.295-clamp(speed/45,0,.018);if(turn&&turn!=="through"&&Number.isFinite(dist)&&dist<140)targetH+=.008*(1-clamp(dist/140,0,1));P.targetHorizon=clamp(targetH,.27,.305);P.horizonRatio+=(P.targetHorizon-P.horizonRatio)*.055;
+  let targetHeading=rawSceneHeading();
+  if(!S.demo&&S.routeCoords.length&&Number.isFinite(S.routeFilter.along)&&S.routeFilter.quality>=30){
+    const here=routePointAtAlong(S.routeFilter.along),look=routePointAtAlong(S.routeFilter.along+clamp(22+speed*2.1,24,72));
+    if(here&&look){const weight=turn&&turn!=="through"&&Number.isFinite(dist)&&dist<170?clamp(.18+(170-dist)/300,.18,.48):.18;targetHeading=lerpAngle(here.bearing,look.bearing,weight)}
+  }
+  if(!Number.isFinite(P.viewHeading))P.viewHeading=targetHeading;else P.viewHeading=lerpAngle(P.viewHeading,targetHeading,.075)
 }
 function drawSkyDetails(c,w,h,hz,day){
   if(day){
