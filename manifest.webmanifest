@@ -1,10 +1,10 @@
 {
-  "name": "Marseille Drive",
-  "short_name": "MDrive",
-  "start_url": "./?v=3",
-  "display": "standalone",
-  "background_color": "#071015",
-  "theme_color": "#071015",
-  "lang": "fr-FR",
-  "description": "Prototype de navigation lane-level Marseille Drive Beta 3"
+  "name":"Marseille Drive",
+  "short_name":"MDrive",
+  "start_url":"./?v=4",
+  "display":"standalone",
+  "background_color":"#071015",
+  "theme_color":"#071015",
+  "lang":"fr-FR",
+  "description":"Prototype de navigation lane-level Marseille Drive Beta 4"
 }
