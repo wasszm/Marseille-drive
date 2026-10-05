@@ -854,7 +854,15 @@ function relevantSignal(pos,m){
   }
   return best
 }
-async function maybeReroute(pos,nav){if(!S.route||!S.destination||!nav)return;if((nav.offRoute||0)>CFG.offRouteM)S.offRouteHits++;else S.offRouteHits=0;if(S.offRouteHits<3)return;const now=Date.now();if(now-S.lastRerouteAt<CFG.rerouteCooldownMs)return;S.lastRerouteAt=now;S.offRouteHits=0;setStatus("Hors itinéraire · recalcul automatique…");await calculateRoute(S.destination.lat,S.destination.lon,true)}
+async function maybeReroute(rawPos,nav){
+  if(!S.route||!S.destination||!nav)return;
+  const rawProj=rawPos?routeProjection(rawPos,S.routeFilter.along??S.lastRouteAlong):null,strongGps=S.sensorHealth.gps>=52&&!S.rawGps?.rejected,rawDeviation=rawProj?.distance,filteredDeviation=nav.offRoute||0,deviation=strongGps&&Number.isFinite(rawDeviation)?rawDeviation:filteredDeviation;
+  const threshold=CFG.offRouteM+(S.routeFilter.ambiguity||0)*8;
+  if(deviation>threshold)S.offRouteHits++;else S.offRouteHits=Math.max(0,S.offRouteHits-1);
+  const needed=strongGps?3:5;if(S.offRouteHits<needed)return;
+  const now=Date.now();if(now-S.lastRerouteAt<CFG.rerouteCooldownMs)return;
+  S.lastRerouteAt=now;S.offRouteHits=0;setStatus("Sortie d’itinéraire confirmée · recalcul…");await calculateRoute(S.destination.lat,S.destination.lon,true)
+}
 function updateUi(pos){
   $("speed").textContent=Math.round(pos.speedMps*3.6);if(S.routeCoords.length)updateRouteFilter(pos);
   const observed=nearestRoad(pos);S.previousMatch=S.lastMatch;S.lastMatch=observed;S.matchQuality=observed?.quality||0;sensorHealth(pos,observed);
@@ -887,7 +895,7 @@ function updateUi(pos){
     if(nav.arrived){S.arrived=true;$("progressWrap").classList.remove("hidden");$("progressBar").style.width="100%";$("routeMeta").textContent="Arrivée";setStatus("Destination atteinte")}
     else if(Number.isFinite(nav.progress)){S.arrived=false;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${clamp(nav.progress*100,0,100)}%`;const rem=nav.remaining??S.route.distance,eta=S.route?.distance?S.route.duration*(rem/S.route.distance):rem/Math.max(6,pos.speedMps||10);$("routeMeta").textContent=`${(rem/1000).toFixed(1)} km restants · ~${Math.max(1,Math.round(eta/60))} min`}
   }else{$("instruction").textContent=roadName(m.road);$("detail").textContent=lane.reason;$("advice").textContent=adviceText(lane,null)}
-  draw3D(currentDrawState());updateDiagnostics(navPos,m,lane,nav);maybeReroute(navPos,nav)
+  draw3D(currentDrawState());updateDiagnostics(navPos,m,lane,nav);maybeReroute(pos,nav)
 }
 function startGps(){enableCompass();if(!window.isSecureContext){setStatus("GPS : ouvre bien l’adresse HTTPS GitHub Pages.");return}if(!navigator.geolocation){setStatus("GPS non disponible.");return}$("permission")?.remove();$("gpsBtn").classList.add("active");$("gpsBtn").querySelector("span").textContent="Actif";if(S.gpsWatch!==null)navigator.geolocation.clearWatch(S.gpsWatch);S.gpsWatch=navigator.geolocation.watchPosition(async p=>{const raw=gpsMeasurement(p);S.rawGps=raw;S.gps=smoothGps(raw);if(!S.visualGps)S.visualGps={...S.gps};S.heading=S.gps.heading;if(!S.areaCenter||haversineM(S.gps,S.areaCenter)>CFG.reloadAfterM)await loadRoadData(S.gps.lat,S.gps.lon);if(!S.environmentCenter||haversineM(S.gps,S.environmentCenter)>240)loadEnvironmentData(S.gps.lat,S.gps.lon);updateUi(S.gps);updateUserMarker(S.gps);recordSample();prefetchAheadPack();if(S.destination&&!S.route&&!S.routeLoading&&Date.now()-S.lastRouteAttemptAt>15000)calculateRoute(S.destination.lat,S.destination.lon,false);updateFusionBadge(S.gps,S.lastMatch)},e=>setStatus("GPS : "+e.message),{enableHighAccuracy:true,maximumAge:500,timeout:15000})}
 async function calculateRoute(lat,lon,isReroute=false){
