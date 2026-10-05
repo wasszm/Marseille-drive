@@ -419,7 +419,7 @@ function advanceFusion(nowMs=Date.now()){
   const ds=clamp(f.speedMps*dt,0,4);
   if(S.routeCoords.length&&Number.isFinite(f.along)){
     f.along=clamp(f.along+ds,0,S.routeLengthM||Infinity);const rp=fusedRoutePosition(f.along,f.lateralM);if(rp){f.position={lat:rp.lat,lon:rp.lon};f.heading=rp.heading}
-  }else if(ds>.02)f.position=destinationPoint(f.position,f.heading,ds);
+  }else if(ds>.02){if(Number.isFinite(S.compassHeading)&&age>1200)f.heading=lerpAngle(f.heading,S.compassHeading,clamp(dt*.45,0,.07));f.position=destinationPoint(f.position,f.heading,ds)}
   if(age>1200)f.mode="PRÉDICTIF";
   f.quality=Math.max(18,f.quality-dt*(age>2500?3.5:1.2));
   if(age>1500&&S.laneBelief.confidence>0){
@@ -883,6 +883,7 @@ function renderLoop(now=performance.now()){
   advanceVisualGps(now);
   if(!S.demo&&now-S.lastHudAt>280){
     S.lastHudAt=now;const fp=fusionPosition();updateFusionBadge(fp,effectiveMatch());updateBeliefHud(S.lastLane);
+    if(S.view==="map"&&S.gps&&["PRÉDICTIF","GPS PERDU"].includes(S.fusion.mode))updateUserMarker(S.gps);
     if(S.fusion.mode==="PRÉDICTIF"||S.fusion.mode==="GPS PERDU")$("source").textContent=S.fusion.mode;
     if(S.lastLane)$("confidence").textContent=`${Math.round(S.lastLane.confidence||0)}%`
   }
