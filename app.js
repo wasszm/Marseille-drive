@@ -861,7 +861,7 @@ function corridorLaneScore(index,lane,nav,current){
   const total=lane.total,norm=laneNormalized(index,total),along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,mans=upcomingManeuvers(along,4);
   let score=current?Math.abs(index-current)*.42:0;
   for(let k=0;k<mans.length;k++){
-    const m=mans[k],desired=turnDesiredNorm(m.turn),weight=Math.exp(-m.distance/520)*(k===0?1.55:1);
+    const m=mans[k],desired=turnDesiredNorm(m.turn),weight=Math.exp(-m.distance/520)*(k===0?.18:1);
     score+=Math.abs(norm-desired)*weight*2.2
   }
   if(nav?.after&&nav.after.distance<320){score+=Math.abs(norm-turnDesiredNorm(nav.after.turn))*1.15}
