@@ -1805,7 +1805,7 @@ function cycleSideInfo(tags,side,dir){
   return{type,width:0}
 }
 function sceneRoadMetrics(d){
-  const lane=S.lastLane,tags=effectiveMatch()?.road?.tags||{},dir=lane?.dir||"forward",total=Math.max(1,d.total||lane?.total||1),oneway=["yes","1","true","-1"].includes(String(tags.oneway||"").toLowerCase());
+  const lane=S.lastLane,tags=S.demo?{oneway:"yes",lanes:"3",sidewalk:"both","parking:right":"parallel","cycleway:left":"track",surface:"asphalt"}:(effectiveMatch()?.road?.tags||{}),dir=lane?.dir||"forward",total=Math.max(1,d.total||lane?.total||1),oneway=["yes","1","true","-1"].includes(String(tags.oneway||"").toLowerCase());
   let ownBounds=lane?.geometry?.bounds?.length===total+1?[...lane.geometry.bounds]:null;
   if(!ownBounds){const sum=total*CFG.laneWidthM;ownBounds=Array.from({length:total+1},(_,i)=>-sum/2+i*CFG.laneWidthM)}
   let oppositeBounds=[],dividerOffset=null;const bothWays=positiveInt(tags["lanes:both_ways"]);
