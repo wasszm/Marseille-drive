@@ -89,21 +89,131 @@ function startDemo(){if(S.demo){S.demo=false;clearInterval(S.demoTimer);S.demoTi
 function poly(c,p,f){c.beginPath();p.forEach((x,i)=>i?c.lineTo(x[0],x[1]):c.moveTo(x[0],x[1]));c.closePath();c.fillStyle=f;c.fill()}
 function line(c,p,col,w){c.beginPath();p.forEach((x,i)=>i?c.lineTo(x[0],x[1]):c.moveTo(x[0],x[1]));c.strokeStyle=col;c.lineWidth=w;c.stroke()}
 function arrow(c,x,y,on,turn){c.save();c.strokeStyle=on?"#fff":"#c5cdd1";c.lineWidth=on?5:3;c.lineCap="round";c.lineJoin="round";c.beginPath();c.moveTo(x,y+20);c.lineTo(x,y-16);if(on&&turn==="right"){c.quadraticCurveTo(x,y-27,x+18,y-28);c.moveTo(x+18,y-28);c.lineTo(x+10,y-35);c.moveTo(x+18,y-28);c.lineTo(x+10,y-21)}else if(on&&turn==="left"){c.quadraticCurveTo(x,y-27,x-18,y-28);c.moveTo(x-18,y-28);c.lineTo(x-10,y-35);c.moveTo(x-18,y-28);c.lineTo(x-10,y-21)}else{c.moveTo(x,y-16);c.lineTo(x-8,y-6);c.moveTo(x,y-16);c.lineTo(x+8,y-6)}c.stroke();c.restore()}
-function perspectiveEnvPoint(side,forward,w,h,hz){if(forward<=4||forward>270)return null;const depth=clamp(1-forward/285,0,1),y=hz+(h-hz)*Math.pow(depth,1.55)*.82,x=w/2+side*(w*.78)/(forward+42),scale=clamp(92/(forward+28),.18,1.7);return{x,y,scale}}
-function drawEnvironment(c,w,h,hz,heading){const pos=S.demo?null:S.gps;if(!pos||!S.environment.length){
-  const blocks=[[-.48,.11,.16,.24],[-.30,.09,.13,.18],[-.14,.08,.11,.14],[.14,.08,.11,.15],[.30,.10,.14,.20],[.48,.12,.16,.26]];
-  for(const [sx,sw,sh,depth] of blocks){
-    const bw=w*sw,bh=h*sh,x=w/2+w*sx-bw/2,y=hz;
-    c.fillStyle=depth>.2?"#46545c":"#38464e";c.fillRect(x,y-bh,bw,bh);
-    c.fillStyle="#9aa8ae";
-    for(let r=0;r<3;r++)for(let col=0;col<2;col++)c.fillRect(x+bw*.18+col*bw*.38,y-bh*.78+r*bh*.23,Math.max(2,bw*.10),Math.max(2,bh*.07));
+function sceneHeading(){
+  if(S.demo)return 0;
+  if(S.gps&&S.routeCoords.length){
+    const p=routeProjection(S.gps);
+    if(p&&S.routeCoords[p.index+1])return bearing(p.nearest,S.routeCoords[p.index+1])
   }
+  if(S.lastMatch&&S.gps)return travelDirection(S.lastMatch,S.gps)==="forward"?S.lastMatch.roadBearing:(S.lastMatch.roadBearing+180)%360;
+  return S.heading||0
+}
+function geoToLocal(origin,heading,p){const d=haversineM(origin,p),a=signedAngle(heading,bearing(origin,p));return{side:Math.sin(rad(a))*d,forward:Math.cos(rad(a))*d}}
+function scenePath(maxM=280){
+  if(S.demo){
+    const out=[];for(let f=0;f<=maxM;f+=12){const bend=Math.sin((f/115)+(S.demoT||0)*.05)*Math.min(10,f*.035);out.push({side:bend,forward:f})}return out
+  }
+  if(!S.gps)return[{side:0,forward:0},{side:0,forward:maxM}];
+  const heading=sceneHeading(),geo=[];
+  if(S.routeCoords.length){
+    const p=routeProjection(S.gps);
+    if(p){geo.push(p.nearest);for(let i=p.index+1;i<S.routeCoords.length&&geo.length<80;i++){geo.push(S.routeCoords[i]);if(haversineM(S.gps,S.routeCoords[i])>maxM+70)break}}
+  }else if(S.lastMatch){
+    const m=S.lastMatch,coords=m.road.coords,dir=travelDirection(m,S.gps),i=m.segmentIndex??0;geo.push(m.nearest);
+    if(dir==="forward"){for(let j=i+1;j<coords.length&&geo.length<70;j++){geo.push(coords[j]);if(haversineM(S.gps,coords[j])>maxM+70)break}}
+    else{for(let j=i;j>=0&&geo.length<70;j--){geo.push(coords[j]);if(haversineM(S.gps,coords[j])>maxM+70)break}}
+  }
+  if(geo.length<2)return[{side:0,forward:0},{side:0,forward:maxM}];
+  const raw=[{side:0,forward:0}];
+  for(const p of geo){const q=geoToLocal(S.gps,heading,p);if(q.forward>-8&&q.forward<maxM+35&&Math.abs(q.side)<170)raw.push(q)}
+  raw.sort((a,b)=>a.forward-b.forward);
+  const out=[];
+  for(let i=0;i<raw.length;i++){
+    const a=raw[Math.max(0,i-1)],b=raw[i],c=raw[Math.min(raw.length-1,i+1)];
+    const side=(a.side+b.side*2+c.side)/4;
+    if(!out.length||b.forward-out[out.length-1].forward>2)out.push({side,forward:Math.max(0,b.forward)})
+  }
+  if(out.length<2)out.push({side:0,forward:maxM});
+  return out
+}
+function roadScreenPoint(local,w,h,hz){
+  const maxM=280,f=clamp(local.forward,0,maxM),bot=h*1.04;
+  const y=bot-(bot-hz)*Math.pow(f/maxM,.56),ppm=(w*.055)/(1+f/38),x=w/2+local.side*ppm;
+  return{x,y,ppm,forward:f}
+}
+function offsetScreenPath(path,offset,w,h,hz){return path.map(p=>{const q=roadScreenPoint(p,w,h,hz);return[q.x+offset*q.ppm,q.y]})}
+function drawPathLine(c,pts,color,width,dash=[]){if(pts.length<2)return;c.save();c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.strokeStyle=color;c.lineWidth=width;c.lineCap="round";c.lineJoin="round";c.setLineDash(dash);c.stroke();c.restore()}
+function screenAtForward(path,forward,w,h,hz){
+  let best=path[0]||{side:0,forward:0};
+  for(const p of path)if(Math.abs(p.forward-forward)<Math.abs(best.forward-forward))best=p;
+  return roadScreenPoint(best,w,h,hz)
+}
+function perspectiveEnvPoint(side,forward,w,h,hz){
+  if(forward<=4||forward>280)return null;
+  return roadScreenPoint({side,forward},w,h,hz)
+}
+function drawFallbackCity(c,w,h,hz){
+  const blocks=[[-.48,.11,.16,.24],[-.30,.09,.13,.18],[-.14,.08,.11,.14],[.14,.08,.11,.15],[.30,.10,.14,.20],[.48,.12,.16,.26]];
+  for(const [sx,sw,sh,depth] of blocks){const bw=w*sw,bh=h*sh,x=w/2+w*sx-bw/2,y=hz;c.fillStyle=depth>.2?"#46545c":"#38464e";c.fillRect(x,y-bh,bw,bh);c.fillStyle="#9aa8ae";for(let r=0;r<3;r++)for(let col=0;col<2;col++)c.fillRect(x+bw*.18+col*bw*.38,y-bh*.78+r*bh*.23,Math.max(2,bw*.10),Math.max(2,bh*.07))}
   for(let i=0;i<6;i++){const side=i<3?-1:1,k=i%3,x=w/2+side*(w*.18+k*w*.11),y=hz+28+k*18;c.strokeStyle="#68747a";c.lineWidth=2;c.beginPath();c.moveTo(x,y);c.lineTo(x,y-28-k*3);c.stroke();c.fillStyle="#dbe2c1";c.beginPath();c.arc(x,y-30-k*3,3,0,Math.PI*2);c.fill()}
   for(let i=0;i<4;i++){const side=i<2?-1:1,k=i%2,x=w/2+side*(w*.27+k*w*.13),y=hz+55+k*35;c.strokeStyle="#314139";c.lineWidth=3;c.beginPath();c.moveTo(x,y);c.lineTo(x,y-20);c.stroke();c.fillStyle="#42604e";c.beginPath();c.arc(x,y-28,10,0,Math.PI*2);c.fill()}
-  return
-}const objs=visibleEnvironment(pos,heading);let labels=0;for(const o of objs){const p=perspectiveEnvPoint(o.side,o.forward,w,h,hz);if(!p)continue;if(o.kind==="building"){const bw=clamp((18+Math.min(16,o.height*.25))*p.scale,6,110),bh=clamp((16+o.height*2.0)*p.scale,7,h*.42);c.fillStyle=o.forward<70?"#45535b":"#35434b";c.fillRect(p.x-bw/2,p.y-bh,bw,bh);c.fillStyle="#26343b";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.32,p.y-bh-5*p.scale);c.lineTo(p.x+bw*.48,p.y-bh-5*p.scale);c.lineTo(p.x+bw/2,p.y-bh);c.fill();if(p.scale>.55){c.fillStyle="#97a7ae";const rows=Math.min(5,Math.max(1,Math.round(o.height/6)));for(let r=0;r<rows;r++){for(let col=0;col<2;col++){const ww=Math.max(2,3*p.scale),wh=Math.max(2,2.5*p.scale),wx=p.x-bw*.22+col*bw*.28,wy=p.y-bh+bh*(r+1)/(rows+1);c.fillRect(wx,wy,ww,wh)}}}}else if(o.kind==="tree"){const th=clamp(18*p.scale,6,45);c.strokeStyle="#2f3b34";c.lineWidth=Math.max(1,2*p.scale);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-th*.55);c.stroke();c.fillStyle="#3e5b49";c.beginPath();c.arc(p.x,p.y-th*.72,Math.max(3,8*p.scale),0,Math.PI*2);c.fill()}else if(o.kind==="lamp"){const lh=clamp(26*p.scale,8,58);c.strokeStyle="#748087";c.lineWidth=Math.max(1,1.5*p.scale);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-lh);c.stroke();c.fillStyle="#dbe2c1";c.beginPath();c.arc(p.x,p.y-lh,Math.max(1.5,2.5*p.scale),0,Math.PI*2);c.fill()}else if(o.kind==="poi"){const size=clamp(7*p.scale,3,15);c.fillStyle="#dbe5ea";c.fillRect(p.x-size/2,p.y-size,size,size);if(o.name&&p.scale>.55&&labels<4){c.fillStyle="#fff";c.font=`800 ${clamp(8*p.scale,7,11)}px -apple-system,Arial`;c.textAlign="center";c.fillText(o.name.slice(0,18),p.x,p.y-size-3);labels++}}}}
-function drawJunctionGeometry(c,w,h,hz,d){if(!Number.isFinite(d.distance)||d.distance>130||d.arrived)return;const f=clamp(1-d.distance/150,0,1),y=hz+(h-hz)*(.12+.50*Math.pow(f,1.35)),th=clamp(10+f*40,10,55);c.fillStyle="#1a1e20";c.fillRect(0,y-th/2,w,th);c.strokeStyle="#d7dde0";c.lineWidth=1.5;c.beginPath();c.moveTo(0,y-th/2);c.lineTo(w,y-th/2);c.moveTo(0,y+th/2);c.lineTo(w,y+th/2);c.stroke();if(d.turn==="roundabout"){c.strokeStyle="#d7dde0";c.lineWidth=3;c.beginPath();c.arc(w/2,y,clamp(10+f*20,10,28),0,Math.PI*2);c.stroke();c.fillStyle="#2d393f";c.beginPath();c.arc(w/2,y,clamp(5+f*11,5,15),0,Math.PI*2);c.fill()}else if(d.turn==="left"||d.turn==="right"){c.fillStyle="rgba(255,255,255,.10)";const dir=d.turn==="right"?1:-1;c.beginPath();c.moveTo(w/2,y);c.lineTo(w/2+dir*w*.34,y-th*.35);c.lineTo(w/2+dir*w*.36,y+th*.35);c.closePath();c.fill()}}
-function draw3D(d={}){const cv=$("drive"),r=cv.getBoundingClientRect(),D=devicePixelRatio||1,w=Math.max(1,r.width),h=Math.max(1,r.height);cv.width=Math.round(w*D);cv.height=Math.round(h*D);const c=cv.getContext("2d");c.setTransform(D,0,0,D,0,0);const hz=h*.30,cx=w/2,bot=h*1.04,rt=w*.28,rb=w*.94,total=Math.max(1,d.total||3),rec=clamp(d.recommended||2,1,total);const g=c.createLinearGradient(0,0,0,hz);g.addColorStop(0,"#0f1c24");g.addColorStop(1,"#263640");c.fillStyle=g;c.fillRect(0,0,w,hz);c.fillStyle="#2a343a";c.fillRect(0,hz,w,h-hz);const roadHeading=S.lastMatch&&S.gps?(travelDirection(S.lastMatch,S.gps)==="forward"?S.lastMatch.roadBearing:(S.lastMatch.roadBearing+180)%360):(S.heading||0),envHeading=S.demo?0:(S.gps?.speedMps>1.5&&Number.isFinite(S.heading)?S.heading:roadHeading);drawEnvironment(c,w,h,hz,envHeading);poly(c,[[cx-rt*.70,hz],[cx-rt*.50,hz],[cx-rb*.56,bot],[cx-rb*.70,bot]],"#565f63");poly(c,[[cx+rt*.50,hz],[cx+rt*.70,hz],[cx+rb*.70,bot],[cx+rb*.56,bot]],"#565f63");poly(c,[[cx-rt/2,hz],[cx+rt/2,hz],[cx+rb/2,bot],[cx-rb/2,bot]],"#15191c");line(c,[[cx-rt/2,hz],[cx-rb/2,bot]],"#e7ecee",2);line(c,[[cx+rt/2,hz],[cx+rb/2,bot]],"#e7ecee",2);drawJunctionGeometry(c,w,h,hz,d);c.globalAlpha=.2;poly(c,[[cx-rt/2+rt*(rec-1)/total,hz],[cx-rt/2+rt*rec/total,hz],[cx-rb/2+rb*rec/total,bot],[cx-rb/2+rb*(rec-1)/total,bot]],"#38e88c");c.globalAlpha=1;for(let i=1;i<total;i++){const xt=cx-rt/2+rt*i/total,xb=cx-rb/2+rb*i/total;for(let j=0;j<8;j++){const a=j/8,b=(j+.45)/8,ya=hz+(bot-hz)*a*a,yb=hz+(bot-hz)*b*b;line(c,[[xt+(xb-xt)*a*a,ya],[xt+(xb-xt)*b*b,yb]],"#d9dfe2",2)}}for(let i=1;i<=total;i++)arrow(c,cx-rb/2+rb*(i-.5)/total,h*.66,i===rec,d.turn||"through");if(d.distance){c.fillStyle="#fff";c.font="900 12px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.round(d.distance)} m`,cx,h*.47)}if(d.demo){c.fillStyle="#090b0d";c.fillRect(cx-10,hz-50,20,52);c.fillStyle="#ef5050";c.beginPath();c.arc(cx,hz-39,6,0,Math.PI*2);c.fill();c.fillStyle="#fff";c.font="900 11px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.ceil(d.signal)}s*`,cx,hz+22)}else if(d.signal){c.fillStyle="#090b0d";c.fillRect(cx-8,hz-42,16,42);c.fillStyle="#59666d";for(let i=0;i<3;i++){c.beginPath();c.arc(cx,hz-33+i*13,4,0,Math.PI*2);c.fill()}}}
+}
+function drawEnvironment(c,w,h,hz,heading){
+  const pos=S.demo?null:S.gps;if(!pos||!S.environment.length){drawFallbackCity(c,w,h,hz);return}
+  const objs=visibleEnvironment(pos,heading);let labels=0;
+  for(const o of objs){
+    if(o.kind==="crossing")continue;
+    const p=perspectiveEnvPoint(o.side,o.forward,w,h,hz);if(!p)continue;
+    if(o.kind==="building"){
+      const footprint=o.footprint||10,bw=clamp(footprint*p.ppm*.72,7,135),bh=clamp(o.height*p.ppm*1.25,9,h*.46);
+      c.fillStyle=o.forward<70?"#46545c":"#35434b";c.fillRect(p.x-bw/2,p.y-bh,bw,bh);
+      c.fillStyle="#26343b";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.34,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw*.46,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw/2,p.y-bh);c.fill();
+      if(p.ppm>2.1&&bw>18){c.fillStyle="#94a6ad";const rows=Math.min(6,Math.max(1,Math.round(o.height/5)));for(let r=0;r<rows;r++)for(let col=0;col<Math.min(4,Math.max(2,Math.round(bw/30)));col++){const cols=Math.min(4,Math.max(2,Math.round(bw/30))),ww=Math.max(2,bw*.07),wh=Math.max(2,bh*.035),wx=p.x-bw*.35+col*(bw*.7/Math.max(1,cols-1)),wy=p.y-bh+bh*(r+1)/(rows+1);c.fillRect(wx,wy,ww,wh)}}
+    }else if(o.kind==="tree"){
+      const th=clamp(4.8*p.ppm,7,48);c.strokeStyle="#2f3b34";c.lineWidth=Math.max(1,1.7*p.ppm/3);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-th*.55);c.stroke();c.fillStyle="#3e5b49";c.beginPath();c.arc(p.x,p.y-th*.72,clamp(2.2*p.ppm,3,13),0,Math.PI*2);c.fill()
+    }else if(o.kind==="lamp"){
+      const lh=clamp(6*p.ppm,9,58);c.strokeStyle="#748087";c.lineWidth=Math.max(1,1.3*p.ppm/3);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-lh);c.stroke();c.fillStyle="#e4e8c8";c.beginPath();c.arc(p.x,p.y-lh,clamp(.7*p.ppm,1.5,4),0,Math.PI*2);c.fill()
+    }else if(o.kind==="transit"){
+      const hh=clamp(5*p.ppm,8,35);c.fillStyle="#c7d4da";c.fillRect(p.x-2,p.y-hh,4,hh);c.fillStyle="#6fa6c8";c.fillRect(p.x-7,p.y-hh,14,8)
+    }else if(o.kind==="poi"){
+      const size=clamp(1.8*p.ppm,3,15);c.fillStyle="#dbe5ea";c.fillRect(p.x-size/2,p.y-size,size,size);
+      if(o.name&&p.ppm>2.6&&labels<4){c.fillStyle="#fff";c.font="800 9px -apple-system,Arial";c.textAlign="center";c.fillText(o.name.slice(0,18),p.x,p.y-size-3);labels++}
+    }
+  }
+}
+function drawCrossings(c,w,h,hz,heading,total){
+  if(S.demo||!S.gps)return;
+  for(const o of visibleEnvironment(S.gps,heading,100).filter(x=>x.kind==="crossing").slice(0,3)){
+    const p=roadScreenPoint({side:0,forward:o.forward},w,h,hz),half=CFG.laneWidthM*Math.max(1,total)/2*p.ppm;
+    c.save();c.strokeStyle="rgba(255,255,255,.88)";c.lineWidth=Math.max(2,p.ppm*.22);
+    for(let i=-3;i<=3;i++){const yy=p.y+i*Math.max(2,p.ppm*.26);c.beginPath();c.moveTo(p.x-half,yy);c.lineTo(p.x+half,yy);c.stroke()}
+    c.restore()
+  }
+}
+function drawJunctionGeometry(c,w,h,hz,d,path,total){
+  if(!Number.isFinite(d.distance)||d.distance>145||d.arrived)return;
+  const p=screenAtForward(path,Math.max(10,d.distance),w,h,hz),roadHalf=CFG.laneWidthM*Math.max(1,total)/2*p.ppm,th=clamp(p.ppm*4.5,10,52);
+  c.fillStyle="#191e21";
+  if(d.turn==="roundabout"){c.beginPath();c.arc(p.x,p.y,clamp(roadHalf*1.15,14,48),0,Math.PI*2);c.fill();c.strokeStyle="#d7dde0";c.lineWidth=2;c.stroke();c.fillStyle="#33423c";c.beginPath();c.arc(p.x,p.y,clamp(roadHalf*.45,6,20),0,Math.PI*2);c.fill()}
+  else if(d.turn==="left"||d.turn==="right"){const dir=d.turn==="right"?1:-1;c.fillRect(dir>0?p.x-roadHalf:p.x-w,p.y-th/2,dir>0?w-p.x+roadHalf:p.x+roadHalf,th);c.strokeStyle="#d7dde0";c.lineWidth=1.5;c.beginPath();c.moveTo(dir>0?p.x-roadHalf:0,p.y-th/2);c.lineTo(dir>0?w:p.x+roadHalf,p.y-th/2);c.moveTo(dir>0?p.x-roadHalf:0,p.y+th/2);c.lineTo(dir>0?w:p.x+roadHalf,p.y+th/2);c.stroke()}
+}
+function drawSignal(c,p,demoCount){
+  c.fillStyle="#090b0d";c.fillRect(p.x-8,p.y-44,16,42);
+  if(Number.isFinite(demoCount)){c.fillStyle="#ef5050";c.beginPath();c.arc(p.x,p.y-34,5,0,Math.PI*2);c.fill();c.fillStyle="#fff";c.font="900 10px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.ceil(demoCount)}s*`,p.x,p.y+14)}
+  else{c.fillStyle="#59666d";for(let i=0;i<3;i++){c.beginPath();c.arc(p.x,p.y-34+i*12,4,0,Math.PI*2);c.fill()}}
+}
+function draw3D(d={}){
+  const cv=$("drive"),r=cv.getBoundingClientRect(),D=devicePixelRatio||1,w=Math.max(1,r.width),h=Math.max(1,r.height);
+  cv.width=Math.round(w*D);cv.height=Math.round(h*D);const c=cv.getContext("2d");c.setTransform(D,0,0,D,0,0);
+  const hz=h*.29,total=Math.max(1,d.total||3),rec=clamp(d.recommended||d.lane||1,1,total),heading=sceneHeading(),path=scenePath(280);
+  const g=c.createLinearGradient(0,0,0,hz);g.addColorStop(0,"#0d1a22");g.addColorStop(1,"#263944");c.fillStyle=g;c.fillRect(0,0,w,hz);
+  c.fillStyle="#29353a";c.fillRect(0,hz,w,h-hz);
+  drawEnvironment(c,w,h,hz,heading);
+  const roadHalf=CFG.laneWidthM*total/2,sidewalk=1.8;
+  const walkLeft=offsetScreenPath(path,-roadHalf-sidewalk,w,h,hz),roadLeft=offsetScreenPath(path,-roadHalf,w,h,hz),roadRight=offsetScreenPath(path,roadHalf,w,h,hz),walkRight=offsetScreenPath(path,roadHalf+sidewalk,w,h,hz);
+  poly(c,[...walkLeft,...roadLeft.slice().reverse()],"#596267");poly(c,[...roadRight,...walkRight.slice().reverse()],"#596267");
+  poly(c,[...roadLeft,...roadRight.slice().reverse()],"#14191c");
+  drawPathLine(c,roadLeft,"#e7ecee",2);drawPathLine(c,roadRight,"#e7ecee",2);
+  const laneW=CFG.laneWidthM,leftOffset=-roadHalf+(rec-1)*laneW,rightOffset=leftOffset+laneW;
+  c.globalAlpha=.20;poly(c,[...offsetScreenPath(path,leftOffset,w,h,hz),...offsetScreenPath(path,rightOffset,w,h,hz).reverse()],"#38e88c");c.globalAlpha=1;
+  for(let i=1;i<total;i++)drawPathLine(c,offsetScreenPath(path,-roadHalf+i*laneW,w,h,hz),"#d9dfe2",2,[10,13]);
+  drawCrossings(c,w,h,hz,heading,total);drawJunctionGeometry(c,w,h,hz,d,path,total);
+  const arrowP=screenAtForward(path,18,w,h,hz);
+  for(let i=1;i<=total;i++){const x=arrowP.x+(-roadHalf+(i-.5)*laneW)*arrowP.ppm;arrow(c,x,Math.min(h*.73,arrowP.y),i===rec,d.turn||"through")}
+  if(Number.isFinite(d.distance)){const p=screenAtForward(path,clamp(d.distance,18,190),w,h,hz);c.fillStyle="#fff";c.font="900 12px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.round(d.distance)} m`,p.x,p.y-12)}
+  if(d.demo){const p=screenAtForward(path,70,w,h,hz);drawSignal(c,p,d.signal)}
+  else if(d.signal){const p=screenAtForward(path,clamp(d.signal.distance||80,25,180),w,h,hz);drawSignal(c,p,null)}
+}
 function bind(){$("mapBtn").onclick=()=>setView("map");$("driveBtn").onclick=()=>setView("drive");$("gpsBtn").onclick=startGps;$("visionBtn").onclick=toggleVision;$("demoBtn").onclick=startDemo;$("allowGps").onclick=startGps;$("later").onclick=()=>$("permission")?.remove();$("closeVision").onclick=closeVision;$("clearRoute").onclick=clearRoute;$("streetRef").onclick=openStreetReference;window.addEventListener("resize",()=>{if(S.view==="drive")draw3D({lane:S.lastLane?.index||2,total:S.lastLane?.total||3,recommended:S.lastNav?recommendedLane(S.lastLane,S.lastNav.turn)||(S.lastLane?.index||2):(S.lastLane?.index||2),turn:S.lastNav?.turn||"through",distance:S.lastNav?.distance,signal:S.gps?relevantSignal(S.gps,S.lastMatch):null})})}
 async function boot(){bind();initMap();setView("map");setStatus("BETA 6.1 · carte prête · active le GPS");if("serviceWorker"in navigator)try{const regs=await navigator.serviceWorker.getRegistrations();for(const reg of regs){const url=reg.active?.scriptURL||reg.waiting?.scriptURL||reg.installing?.scriptURL||"";if(url&&!url.includes("v=6.1.0"))await reg.unregister()}if("caches"in window){for(const key of await caches.keys())if(key.startsWith("md-beta-")&&key!=="md-beta-6.1.0")await caches.delete(key)}await navigator.serviceWorker.register("./sw.js?v=6.1.0",{updateViaCache:"none"})}catch(e){}}
 boot();
