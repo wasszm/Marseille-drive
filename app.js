@@ -781,8 +781,9 @@ function sceneRoadLayout(d){
   return{visualTotal:current,ownTotal:current,ownOffset:0,divider:null}
 }
 function draw3D(d={}){
-  const cv=$("drive"),r=cv.getBoundingClientRect(),D=Math.min(devicePixelRatio||1,2),w=Math.max(1,r.width),h=Math.max(1,r.height);
-  cv.width=Math.round(w*D);cv.height=Math.round(h*D);const c=cv.getContext("2d");c.setTransform(D,0,0,D,0,0);
+  const cv=$("drive"),r=cv.getBoundingClientRect(),D=Math.min(devicePixelRatio||1,2),w=Math.max(1,r.width),h=Math.max(1,r.height),tw=Math.round(w*D),th=Math.round(h*D);
+  if(cv.width!==tw||cv.height!==th){cv.width=tw;cv.height=th}
+  const c=cv.getContext("2d");c.setTransform(D,0,0,D,0,0);c.clearRect(0,0,w,h);
   const hz=h*.29,total=Math.max(1,d.total||3),rec=clamp(d.recommended||d.lane||1,1,total),layout=sceneRoadLayout(d),visualTotal=layout.visualTotal,heading=sceneHeading(),path=scenePath(280),context=roadContext();
   const day=isDayScene(),g=c.createLinearGradient(0,0,0,hz);
   g.addColorStop(0,day?"#77a8bd":"#0d1a22");g.addColorStop(1,day?"#c1d9df":"#263944");c.fillStyle=g;c.fillRect(0,0,w,hz);
