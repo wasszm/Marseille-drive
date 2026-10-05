@@ -7,19 +7,17 @@
 <link rel="manifest" href="./manifest.webmanifest?v=2">
 <link rel="apple-touch-icon" href="./icon.svg?v=2">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="./styles.css?v=2.0.0">
+<link rel="stylesheet" href="./styles.css?v=2.0.1">
 <title>Marseille Drive — Beta 2</title></head><body>
-<div id="mapView" class="view"><div id="map"></div></div>
-<div id="driveView" class="view hidden"><canvas id="driveCanvas"></canvas></div>
-<div id="vehicle"></div>
+<div id="map"></div><canvas id="drive"></canvas><div id="car"></div>
 <div class="hud">
-<section class="glass topbar"><div><div class="brand">MARSEILLE DRIVE</div><div id="modeLabel" class="muted">BETA 2 · CARTE</div></div><div class="speedbox"><span id="speed">0</span><small> km/h</small></div></section>
-<section class="glass metrics"><div><b id="lane">—</b><span>VOIE</span></div><div><b id="confidence">—</b><span>CONFIANCE</span></div><div><b id="road">—</b><span>ROUTE</span></div><div><b id="signal">—</b><span>FEU</span></div></section>
-<div class="toolbar"><button id="mapBtn" class="glass tool active">🗺️ Carte</button><button id="driveBtn" class="glass tool">🛣️ 3D</button><button id="gpsBtn" class="glass tool">📍 GPS</button><button id="demoBtn" class="glass tool">▶ Démo</button></div>
-<div id="statusChip" class="glass status-chip">Initialisation…</div>
-<section class="glass nav-card"><div class="eyebrow">NAVIGATION</div><div id="instruction" class="instruction">Prêt pour le test</div><div id="detail" class="detail">Active le GPS ou lance la démonstration.</div><div class="lane-row"><div id="laneAdvice" class="lane-advice">Voie : en attente</div><div id="sourceBadge" class="source-badge">SOURCE —</div></div></section>
+<div class="card top"><div><div class="brand">MARSEILLE DRIVE</div><div id="modeLabel" class="muted">BETA 2 · CARTE</div></div><div class="speed"><span id="speed">0</span><small> km/h</small></div></div>
+<div class="card metrics"><div><b id="lane">—</b><small>VOIE</small></div><div><b id="conf">—</b><small>CONFIANCE</small></div><div><b id="road">—</b><small>ROUTE</small></div><div><b id="signal">—</b><small>FEU</small></div></div>
+<div class="buttons"><button id="mapBtn" class="card active">🗺️ Carte</button><button id="driveBtn" class="card">🛣️ 3D</button><button id="gpsBtn" class="card">📍 GPS</button><button id="demoBtn" class="card">▶ Démo</button></div>
+<div id="status" class="card status">Carte prête</div>
+<div class="card bottom"><div class="muted">NAVIGATION</div><div id="instruction" class="instruction">Prêt pour le test</div><div id="detail" class="detail">Active le GPS ou lance la démonstration.</div><div id="advice" class="advice">Voie : en attente</div></div>
 </div>
-<div id="permissionPanel" class="sheet glass"><div class="sheet-title">Test sur iPhone</div><div class="sheet-text">Active le GPS pour tester ta position réelle. Si tu es hors Marseille, l'application chargera les routes autour de toi.</div><div class="sheet-actions"><button id="allowGpsBtn" class="primary">Activer le GPS</button><button id="skipGpsBtn">Plus tard</button></div></div>
+<div id="permission" class="card permission"><b>Test sur iPhone</b><p>Active le GPS pour tester ta position réelle. Si tu es hors Marseille, les routes proches seront chargées autour de toi.</p><button id="allowGps">Activer le GPS</button><button id="later">Plus tard</button></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./app.js?v=2.0.0"></script>
+<script src="./app.js?v=2.0.1"></script>
 </body></html>
