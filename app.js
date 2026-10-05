@@ -447,21 +447,33 @@ function recordSample(){
     route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
-  $("exportBtn").disabled=S.track.length===0
+  $("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
 }
 function toggleRecording(){
   if(S.recording){
     S.recording=false;$("recordBtn").classList.remove("recording");$("recordBtn").textContent=`● Reprendre (${S.track.length})`;
-    $("exportBtn").disabled=S.track.length===0;setStatus(`Trace arrêtée · ${S.track.length} points`);return
+    $("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0;setStatus(`Trace arrêtée · ${S.track.length} points`);return
   }
   if(!S.gps){setStatus("Active le GPS avant d’enregistrer une trace.");return}
   if(!S.track.length)S.track=[];
   S.recording=true;S.lastTrackAt=0;$("recordBtn").classList.add("recording");$("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
   setStatus("Trace terrain locale démarrée")
 }
+function calibrationSummary(){
+  const comparable=S.truthEvents.filter(e=>Number.isFinite(e.predicted)),correct=comparable.filter(e=>e.predicted===e.lane);
+  const avg=a=>a.length?+(a.reduce((s,x)=>s+x,0)/a.length).toFixed(2):null;
+  return{
+    truthCount:S.truthEvents.length,
+    comparable:comparable.length,
+    correct:correct.length,
+    laneAccuracyPct:comparable.length?+(correct.length/comparable.length*100).toFixed(1):null,
+    avgGpsAccuracyM:avg(comparable.map(e=>Number(e.gpsAccuracy)).filter(Number.isFinite)),
+    avgMatchQuality:avg(comparable.map(e=>Number(e.matchQuality)).filter(Number.isFinite))
+  }
+}
 function exportTrack(){
-  if(!S.track.length)return;
-  const payload={app:"Marseille Drive",version:"BETA 8",exportedAt:new Date().toISOString(),points:S.track,truthEvents:S.truthEvents};
+  if(!S.track.length&&!S.truthEvents.length)return;
+  const payload={app:"Marseille Drive",version:"BETA 8",exportedAt:new Date().toISOString(),summary:calibrationSummary(),points:S.track,truthEvents:S.truthEvents};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download=`marseille-drive-trace-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)
 }
