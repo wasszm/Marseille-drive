@@ -55,6 +55,9 @@ function envKind(tags){
   if(tags?.highway==="street_lamp")return"lamp";
   if(tags?.highway==="crossing")return"crossing";
   if(tags?.highway==="bus_stop"||tags?.public_transport==="platform")return"transit";
+  if(tags?.traffic_sign)return"sign";
+  if(tags?.natural==="water"||tags?.water)return"water";
+  if(tags?.leisure==="park"||["grass","forest","meadow","recreation_ground"].includes(tags?.landuse))return"green";
   if(tags?.shop||tags?.amenity)return"poi";
   return"other"
 }
@@ -70,7 +73,7 @@ function environmentObject(e){
 }
 async function loadEnvironmentData(lat,lon){
   if(S.environmentLoading)return;S.environmentLoading=true;S.environmentCenter={lat,lon};
-  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["amenity"](${b});node["shop"](${b}););out geom tags;`;
+  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out geom tags;`;
   try{
     const data=await fetchOverpass(q),objects=[];
     for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}
@@ -644,7 +647,14 @@ function drawEnvironment(c,w,h,hz,heading){
   for(const o of objs){
     if(o.kind==="crossing")continue;
     const p=perspectiveEnvPoint(o.side,o.forward,w,h,hz);if(!p)continue;
-    if(o.kind==="building"){
+    if(o.kind==="green"||o.kind==="water"){
+      const ww=clamp((o.footprint||18)*p.ppm*1.4,10,180),hh=clamp(ww*.16,3,26);
+      c.fillStyle=o.kind==="water"?(day?"#6c9eaa":"#284b56"):(day?"#5d815f":"#304b38");
+      c.beginPath();c.ellipse(p.x,p.y,ww/2,hh/2,0,0,Math.PI*2);c.fill()
+    }else if(o.kind==="sign"){
+      const hh=clamp(5*p.ppm,8,34);c.strokeStyle="#767f84";c.lineWidth=2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-hh);c.stroke();
+      c.fillStyle="#d9e0e3";c.fillRect(p.x-5,p.y-hh-7,10,7)
+    }else if(o.kind==="building"){
       const footprint=o.footprint||10,bw=clamp(footprint*p.ppm*.72,7,135),bh=clamp(o.height*p.ppm*1.25,9,h*.46);
       c.fillStyle=day?(o.forward<70?"#8b969a":"#78858a"):(o.forward<70?"#46545c":"#35434b");c.fillRect(p.x-bw/2,p.y-bh,bw,bh);
       c.fillStyle=day?"#667278":"#26343b";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.34,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw*.46,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw/2,p.y-bh);c.fill();
