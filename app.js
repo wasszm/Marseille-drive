@@ -918,24 +918,33 @@ function applyReplayRoute(payload){
   if(payload.destination){S.destination={lat:Number(payload.destination.lat),lon:Number(payload.destination.lon)};S.destinationLabel=payload.destination.label||null}
   if(S.routeLayer)S.map.removeLayer(S.routeLayer);S.routeLayer=L.polyline(S.routeCoords.map(p=>[p.lat,p.lon]),{color:"#fff",weight:7,opacity:.93,className:"route-line"}).addTo(S.map)
 }
+function replayStats(){
+  const total=S.replayResults.length,currentKnown=S.replayResults.filter(x=>Number.isFinite(x.predicted)),currentCorrect=currentKnown.filter(x=>x.correct).length,baseKnown=S.replayResults.filter(x=>Number.isFinite(x.baselinePredicted)),baseCorrect=baseKnown.filter(x=>x.baselineCorrect).length;
+  return{
+    total,
+    current:{known:currentKnown.length,correct:currentCorrect,accuracy:currentKnown.length?Math.round(currentCorrect/currentKnown.length*100):null,coverage:total?Math.round(currentKnown.length/total*100):null,global:total?Math.round(currentCorrect/total*100):null},
+    baseline:{known:baseKnown.length,correct:baseCorrect,accuracy:baseKnown.length?Math.round(baseCorrect/baseKnown.length*100):null,coverage:total?Math.round(baseKnown.length/total*100):null,global:total?Math.round(baseCorrect/total*100):null}
+  }
+}
 function replayPointAt(index){
   const p=S.replayPoints[index],g=p?.gps;if(!g)return;
   const raw={lat:Number(g.lat),lon:Number(g.lon),accuracy:Number(g.accuracy)||8,speedMps:Math.max(0,(Number(g.speedKph)||0)/3.6),heading:Number(g.heading)||0,t:Date.now(),rejected:false};
   S.rawGps=raw;S.gps={...raw};S.heading=raw.heading;S.lastAcceptedRaw={...raw};S.visualGps={...raw};updateUi(S.gps);updateUserMarker(S.gps);
   const truths=S.replayTruthByIndex?.get(index)||[];
   for(const truth of truths){
-    const predicted=S.lastLane?.index??null,correct=Number.isFinite(predicted)&&predicted===Number(truth.lane);
-    S.replayResults.push({index,t:p.t||null,truth:Number(truth.lane),predicted,correct});
+    const actual=Number(truth.lane),predicted=S.lastLane?.index??null,baselinePredicted=Number.isFinite(Number(truth.predicted))?Number(truth.predicted):null,correct=Number.isFinite(predicted)&&predicted===actual,baselineCorrect=Number.isFinite(baselinePredicted)&&baselinePredicted===actual;
+    S.replayResults.push({index,t:p.t||null,truth:actual,predicted,correct,baselinePredicted,baselineCorrect});
+    addLaneCalibrationSample(S.lastMatch,S.lastLane,actual)
   }
-  const total=S.replayResults.length,compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,score=$("replayScore");
-  score.textContent=`Replay ${index+1}/${S.replayPoints.length} · ${correct}/${total} correct · couverture ${total?Math.round(compared.length/total*100):0}%`;score.classList.remove("hidden")
+  const stats=replayStats(),score=$("replayScore"),cur=stats.current,base=stats.baseline;
+  score.textContent=`Replay ${index+1}/${S.replayPoints.length} · B10 ${cur.correct}/${stats.total} (${cur.coverage??0}% couv.)${base.known?` · B9 ${base.correct}/${stats.total}`:""}`;score.classList.remove("hidden")
 }
 function stopReplay(done=false){
   clearInterval(S.replayTimer);S.replayTimer=null;
   if(!S.replayActive&&!done)return;S.replayActive=false;
   $("stopReplayBtn").classList.add("hidden");$("replayBtn").classList.remove("hidden");
-  const total=S.replayResults.length,compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,accuracy=compared.length?Math.round(correct/compared.length*100):null,coverage=total?Math.round(compared.length/total*100):null;
-  $("replayScore").textContent=done?`Replay terminé · précision ${accuracy===null?"—":accuracy+"%"} · couverture ${coverage===null?"—":coverage+"%"} · global ${total?Math.round(correct/total*100)+"%":"—"}`:"Replay arrêté";
+  const s=replayStats(),c=s.current,b=s.baseline,delta=Number.isFinite(c.global)&&Number.isFinite(b.global)?c.global-b.global:null;
+  $("replayScore").textContent=done?`Replay terminé · B10 précision ${c.accuracy??"—"}% · couverture ${c.coverage??"—"}% · global ${c.global??"—"}%${b.known?` · B9 global ${b.global}% · Δ ${delta>=0?"+":""}${delta} pts`:""}`:"Replay arrêté";
   setStatus(done?"Replay terminé":"Replay arrêté")
 }
 async function loadReplayFile(ev){
