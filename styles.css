@@ -124,3 +124,5 @@ body.drive-mode .belief-hud.hidden{display:none}
 .replay-actions{margin-top:7px}.replay-actions .hidden{display:none}
 .replay-score{margin-top:8px;padding:8px 10px;border-radius:10px;background:#11191e;border:1px solid rgba(255,255,255,.07);font-size:9px;font-weight:850}
 .replay-score.hidden{display:none}
+
+.belief-hud .belief-lane.candidate{opacity:.82;outline:1px dashed rgba(255,255,255,.35)}
