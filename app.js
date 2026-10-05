@@ -643,7 +643,7 @@ function clearLaneMapOverlay(){
 }
 function updateLaneMapOverlay(m,lane,nav){
   if(!S.map||!m||!lane?.index||lane.confidence<48){clearLaneMapOverlay();return}
-  const plan=nav?routeLaneStrategy(lane,nav):null,target=plan?.target||lane.index,key=`${m.road.id}:${lane.dir}:${lane.index}:${target}:${Math.round(lane.geometry?.placementShift||0)}`;
+  const plan=nav?routeLaneStrategy(lane,nav):null,target=plan?.target||lane.index,key=`${m.road.id}:${Math.floor((m.segmentIndex||0)/4)}:${lane.dir}:${lane.index}:${target}:${Math.round(lane.geometry?.placementShift||0)}`;
   if(S.laneOverlayKey===key)return;clearLaneMapOverlay();S.laneOverlayKey=key;
   const current=offsetMatchedRoad(m,lane,lane.index);if(current.length>1)S.laneLayer=L.polyline(current.map(p=>[p.lat,p.lon]),{color:"#56a8ff",weight:5,opacity:.9,dashArray:"1 0",className:"lane-center-line"}).addTo(S.map);
   if(target&&target!==lane.index){const dest=offsetMatchedRoad(m,lane,target);if(dest.length>1)S.targetLaneLayer=L.polyline(dest.map(p=>[p.lat,p.lon]),{color:"#45e58a",weight:5,opacity:.9,dashArray:"8 8",className:"lane-target-line"}).addTo(S.map)}
