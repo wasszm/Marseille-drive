@@ -1622,6 +1622,11 @@ function draw3D(d={}){
   const compatible=Array.isArray(d.compatible)?d.compatible.filter(i=>i>=1&&i<=total&&access[i-1]!==false):[];
   if(compatible.length){c.globalAlpha=.10;for(const idx of compatible){const vi=layout.ownOffset+idx,l=-roadHalf+(vi-1)*laneW,r=l+laneW;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#64ef9b")}c.globalAlpha=1}
   if(d.current&&d.current!==rec){const vi=layout.ownOffset+d.current,l=-roadHalf+(vi-1)*laneW,r=l+laneW;c.globalAlpha=.12;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#4b9fff");c.globalAlpha=1}
+  if(d.target&&d.target!==rec&&d.target>=1&&d.target<=total){
+    const vi=layout.ownOffset+d.target,l=-roadHalf+(vi-1)*laneW,r=l+laneW;c.globalAlpha=.11;
+    poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#45e58a");c.globalAlpha=1;
+    const tp=screenAtForward(path,42,w,h,hz),tx=tp.x+(-roadHalf+(vi-.5)*laneW)*tp.ppm;c.fillStyle="rgba(220,255,235,.82)";c.font="900 7px -apple-system,Arial";c.textAlign="center";c.fillText("CIBLE",tx,tp.y)
+  }
   const visualRec=layout.ownOffset+rec,leftOffset=-roadHalf+(visualRec-1)*laneW,rightOffset=leftOffset+laneW;
   c.globalAlpha=.20;poly(c,[...offsetScreenPath(path,leftOffset,w,h,hz),...offsetScreenPath(path,rightOffset,w,h,hz).reverse()],"#38e88c");c.globalAlpha=1;
   for(let i=1;i<visualTotal;i++){
