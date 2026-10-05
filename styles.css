@@ -100,3 +100,8 @@ body.drive-mode .vision-footer{display:block;font-size:6px;line-height:1.25}
 body.drive-mode .vision-footer button{width:100%;margin-top:4px;padding:4px;font-size:7px}
 body.drive-mode #visionStatus{display:block;max-width:none}
 #visionBtn.active{background:#fff;color:#111}
+
+.truth-block{margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.07)}
+.truth-block>small{display:block;font-size:7px;letter-spacing:.55px;opacity:.48;margin-bottom:7px}
+.truth-lanes{display:flex;gap:6px;flex-wrap:wrap}.truth-lanes button{min-width:36px;border:1px solid rgba(255,255,255,.10);background:#11191e;color:#fff;border-radius:9px;padding:8px;font-size:10px;font-weight:900}
+.truth-lanes button.active{background:#fff;color:#111}.truth-lanes span{font-size:8px;opacity:.5}
