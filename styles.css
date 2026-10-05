@@ -25,3 +25,8 @@
 .junction-lanes span.recommended{background:#fff;color:#111;opacity:1}
 .junction-lanes small{font-size:9px;opacity:.6}
 .status{max-width:58vw}
+
+.env-badge{position:absolute;top:199px;right:12px;padding:5px 8px;border-radius:9px;background:rgba(8,13,17,.82);border:1px solid rgba(255,255,255,.09);font-size:7px;font-weight:900;letter-spacing:.7px;opacity:.78}
+.route-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.street-btn{border:1px solid rgba(255,255,255,.12);background:#151d22;color:#fff;border-radius:9px;padding:6px 8px;font-size:9px;font-weight:900}
+#routeCard .street-btn,#routeCard .clear-btn{pointer-events:auto}
