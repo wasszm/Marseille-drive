@@ -25,10 +25,12 @@ function updateBeliefHud(lane=S.lastLane){
   probs.forEach((p,i)=>{const el=document.createElement("div");el.className="belief-lane"+(i+1===best?" best":"")+(i+1===lane.index?" current":"");const a=document.createElement("strong"),b=document.createElement("span");a.textContent=`V${i+1}`;b.textContent=`${Math.round(p*100)}%`;el.append(a,b);box.appendChild(el)})
 }
 function updateManeuverHud(nav){
-  const hud=$("maneuverHud");if(!nav){$("maneuverText").textContent="Suivre la route";$("maneuverDistance").textContent="—";$("maneuverGlyph").textContent="↑";return}
+  const after=$("maneuverAfter");
+  if(!nav){$("maneuverText").textContent="Suivre la route";$("maneuverDistance").textContent="—";$("maneuverGlyph").textContent="↑";after.classList.add("hidden");after.textContent="";return}
   $("maneuverGlyph").textContent=turnHudGlyph(nav.turn);
   $("maneuverText").textContent=nav.arrived?"Destination atteinte":nav.instruction;
-  $("maneuverDistance").textContent=nav.arrived?"ARRIVÉE":Number.isFinite(nav.distance)?(nav.distance>=1000?`${(nav.distance/1000).toFixed(1)} km`:`${Math.max(0,Math.round(nav.distance))} m`):"—"
+  $("maneuverDistance").textContent=nav.arrived?"ARRIVÉE":Number.isFinite(nav.distance)?(nav.distance>=1000?`${(nav.distance/1000).toFixed(1)} km`:`${Math.max(0,Math.round(nav.distance))} m`):"—";
+  if(nav.after&&nav.distance<420){after.textContent=`Puis ${nav.after.instruction.toLowerCase()} · +${Math.round(nav.after.distance)} m`;after.classList.remove("hidden")}else{after.classList.add("hidden");after.textContent=""}
 }
 function roadName(r){const m={motorway:"Autoroute",trunk:"Voie rapide",primary:"Axe principal",secondary:"Route secondaire",tertiary:"Route tertiaire",residential:"Rue résidentielle",service:"Voie de service",unclassified:"Route",living_street:"Zone de rencontre"};return r?.tags?.name||r?.tags?.ref||m[r?.tags?.highway]||"Route sans nom"}
 function haversineM(a,b){const R=6371000,p1=rad(a.lat),p2=rad(b.lat),dp=rad(b.lat-a.lat),dl=rad(b.lon-a.lon),q=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return R*2*Math.atan2(Math.sqrt(q),Math.sqrt(Math.max(0,1-q)))}
@@ -537,11 +539,17 @@ function nextInstruction(pos){
   const proj=liveRouteProjection(pos);if(!proj)return{instruction:"Suivre l’itinéraire",detail:"",turn:"through",distance:null};
   const dest=S.destination?haversineM(pos,S.destination):Infinity;
   if(proj.remaining<35||dest<35)return{instruction:"Destination atteinte",detail:"Tu es arrivé",turn:"through",distance:0,remaining:0,progress:1,offRoute:proj.distance,arrived:true,maneuverId:"arrive"};
-  let candidate=null;
-  for(const m of S.routeManeuvers){if(m.type==="depart")continue;if(m.along>=proj.along-12){candidate=m;break}}
+  let candidate=null,candidateIndex=-1;
+  for(let i=0;i<S.routeManeuvers.length;i++){const m=S.routeManeuvers[i];if(m.type==="depart")continue;if(m.along>=proj.along-12){candidate=m;candidateIndex=i;break}}
   if(!candidate)return{instruction:"Continue jusqu’à destination",detail:`${Math.round(proj.remaining)} m restants`,turn:"through",distance:proj.remaining,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,maneuverId:"final"};
   const distance=Math.max(0,candidate.along-proj.along),turn=maneuverTurn(candidate),instruction=maneuverInstruction(candidate,turn);
-  return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
+  let after=null;
+  for(let i=candidateIndex+1;i<S.routeManeuvers.length;i++){
+    const m=S.routeManeuvers[i];if(m.type==="depart"||m.type==="arrive")continue;
+    const delta=m.along-candidate.along;if(delta>650)break;
+    if(delta>18){after={instruction:maneuverInstruction(m,maneuverTurn(m)),distance:delta,road:m.step.name||""};break}
+  }
+  return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,after,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
 }
 function compatibleLanes(lane,turn){
   if(!lane.total)return[];
