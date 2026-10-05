@@ -237,12 +237,52 @@ function estimateLane(m,pos){
   const mapQ=Number.isFinite(m.quality)?m.quality:50,confidence=clamp(Math.round(92-Math.min(m.distance,40)*1.1-Math.min(acc,40)*2.25-Math.min(headErr,90)*.22+(mapQ-50)*.18),0,100);
   const hasTurnLanes=Boolean(directionalLaneValue(m.road.tags,"turn:lanes",dir)),geom=laneGeometry(m.road.tags,dir,total);
   const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),geometry:geom};
-  if(!total)return{...base,index:null,reason:"Nombre de voies absent dans OSM"};
-  if(acc>5.5||confidence<62)return{...base,index:null,reason:`GPS ±${Math.round(acc)} m : pas assez précis pour une voie`};
-  const off=signedLateralM(pos,m.nearest,rb),index=laneFromOffset(geom,off);
-  if(!index)return{...base,index:null,lateralM:off,reason:"Position latérale incompatible avec la géométrie des voies"};
-  const penalty=geom?.quality==="inferred"?8:0;
-  return{...base,index,lateralM:off,confidence:clamp(confidence-penalty,0,100),reason:geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM"}
+  if(!total)return{...base,index:null,candidateIndex:null,reason:"Nombre de voies absent dans OSM"};
+  const off=signedLateralM(pos,m.nearest,rb),candidateIndex=laneFromOffset(geom,off);
+  if(!candidateIndex)return{...base,index:null,candidateIndex:null,lateralM:off,reason:"Position latérale incompatible avec la géométrie des voies"};
+  const penalty=geom?.quality==="inferred"?8:0,finalConfidence=clamp(confidence-penalty,0,100),reliable=acc<=5.5&&finalConfidence>=62;
+  return{...base,index:reliable?candidateIndex:null,candidateIndex,lateralM:off,confidence:finalConfidence,reason:reliable?(geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM"):`Mesure latérale disponible · GPS ±${Math.round(acc)} m`}
+}
+function normalizeProb(v){
+  const sum=v.reduce((a,b)=>a+(Number.isFinite(b)?Math.max(0,b):0),0);
+  return sum>1e-9?v.map(x=>Math.max(0,x)/sum):v.map(()=>1/v.length)
+}
+function laneCenters(geom){return geom?.widths?.map((_,i)=>(geom.bounds[i]+geom.bounds[i+1])/2)||[]}
+function updateLaneBelief(lane,m){
+  const B=S.laneBelief,roadId=m?.road?.id||null,total=lane?.total||0;
+  if(!total||!lane.geometry){B.roadId=roadId;B.total=total;B.probs=[];B.index=null;B.confidence=0;return lane}
+  if(B.roadId!==roadId||B.total!==total||B.probs.length!==total){
+    B.roadId=roadId;B.total=total;B.probs=Array.from({length:total},()=>1/total);B.index=null;B.confidence=0;B.lastVisionShift=0
+  }
+  const prior=Array(total).fill(0);
+  for(let i=0;i<total;i++)for(let j=0;j<total;j++){
+    const d=Math.abs(j-i),t=d===0?.82:d===1?.085:d===2?.008:.002;prior[j]+=B.probs[i]*t
+  }
+  const centers=laneCenters(lane.geometry),acc=S.rawGps?.accuracy??S.gps?.accuracy??999,sigma=clamp(acc*.62,1.15,8.5);
+  let likelihood=Array(total).fill(1);
+  if(Number.isFinite(lane.lateralM)){
+    likelihood=centers.map(c=>{
+      const d=lane.lateralM-c,g=Math.exp(-(d*d)/(2*sigma*sigma));
+      return .12+.88*g
+    })
+  }
+  const v=S.visionCue;
+  if(v?.stable&&v.valid&&v.confidence>=68&&B.index){
+    const dir=v.offsetNorm>.22?1:v.offsetNorm<-.22?-1:0;
+    if(dir&&v.nearBoundary){
+      const target=B.index-1+dir;
+      if(target>=0&&target<total){likelihood[target]*=1.45;likelihood[B.index-1]*=.82;B.lastVisionShift=dir}
+    }else if(Math.abs(v.offsetNorm)<.14)likelihood[B.index-1]*=1.18
+  }
+  const gpsStrength=clamp((16-acc)/12,.08,1),mapStrength=clamp((m?.quality||45)/100,.25,1),strength=gpsStrength*mapStrength;
+  const posterior=normalizeProb(prior.map((p,i)=>p*Math.pow(likelihood[i],.35+strength*.95)));
+  B.probs=posterior;
+  const ranked=posterior.map((p,i)=>({p,i:i+1})).sort((a,b)=>b.p-a.p),top=ranked[0],second=ranked[1]||{p:0},gap=top.p-second.p;
+  const certainty=clamp((top.p-.34)/.5,0,1)*.7+clamp(gap/.32,0,1)*.3;
+  B.confidence=Math.round(clamp((lane.confidence*.42+(m?.quality||0)*.23+certainty*100*.35),0,100));
+  const fusedQ=S.fusion?.quality||gpsQuality(S.rawGps,m),valid=top.p>=.47&&gap>=.08&&B.confidence>=58&&fusedQ>=30;
+  B.index=valid?top.i:(B.index&&top.p>=.38?B.index:null);
+  return{...lane,index:B.index,belief:[...posterior],beliefTop:+top.p.toFixed(3),beliefGap:+gap.toFixed(3),confidence:B.confidence,reason:valid?"Fusion temporelle GPS + carte + vision":"Probabilités de voie en convergence"}
 }
 function stabilizeLane(lane,m){
   const f=S.laneFilter,roadId=m?.road?.id||null;
@@ -482,7 +522,7 @@ function relevantSignal(pos,m){
   return best
 }
 async function maybeReroute(pos,nav){if(!S.route||!S.destination||!nav)return;if((nav.offRoute||0)>CFG.offRouteM)S.offRouteHits++;else S.offRouteHits=0;if(S.offRouteHits<3)return;const now=Date.now();if(now-S.lastRerouteAt<CFG.rerouteCooldownMs)return;S.lastRerouteAt=now;S.offRouteHits=0;setStatus("Hors itinéraire · recalcul automatique…");await calculateRoute(S.destination.lat,S.destination.lon,true)}
-function updateUi(pos){$("speed").textContent=Math.round(pos.speedMps*3.6);const m=nearestRoad(pos);S.previousMatch=S.lastMatch;S.lastMatch=m;S.matchQuality=m?.quality||0;if(!m){S.lastSignal=null;updateFusionState(pos,null,null,null);$("road").textContent="—";$("lane").textContent="—";$("confidence").textContent="—";$("advice").textContent="Route à confirmer";$("source").textContent="SOURCE GPS";updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateManeuverHud(null);updateFusionBadge(pos,null);updateDiagnostics(pos,null,null,null);return}const lane=stabilizeLane(fuseLaneWithVision(estimateLane(m,pos)),m),nav=S.route?nextInstruction(pos):null,sig=relevantSignal(pos,m);S.lastLane=lane;S.lastNav=nav;S.lastSignal=sig;updateFusionState(pos,m,lane,nav);updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);updateManeuverHud(nav);updateFusionBadge(pos,m);voiceCue(nav);$("road").textContent=roadName(m.road);$("lane").textContent=lane.index?`${lane.index}/${lane.total}`:(lane.total?`?/${lane.total}`:"—");$("confidence").textContent=`${lane.confidence}%`;$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";$("source").textContent=lane.index?(lane.visionAssist&&S.visionCue?.stable?"GPS + VISION":"ESTIMATION"):"PAS ASSEZ PRÉCIS";if(nav){$("instruction").textContent=nav.instruction;$("detail").textContent=`${nav.detail} · ${lane.reason}`;$("advice").textContent=adviceText(lane,nav);if(nav.arrived){S.arrived=true;$("progressWrap").classList.remove("hidden");$("progressBar").style.width="100%";$("routeMeta").textContent="Arrivée";setStatus("Destination atteinte")}else if(Number.isFinite(nav.progress)){S.arrived=false;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${clamp(nav.progress*100,0,100)}%`;const rem=nav.remaining??S.route.distance;const eta=S.route?.distance?S.route.duration*(rem/S.route.distance):rem/Math.max(6,pos.speedMps||10);$("routeMeta").textContent=`${(rem/1000).toFixed(1)} km restants · ~${Math.max(1,Math.round(eta/60))} min`}}else{$("instruction").textContent=roadName(m.road);$("detail").textContent=lane.reason;$("advice").textContent=adviceText(lane,null)}draw3D({lane:lane.index||2,total:lane.total||3,current:lane.index||null,recommended:nav?recommendedLane(lane,nav.turn)||(lane.index||2):(lane.index||2),compatible:nav&&lane.hasTurnLanes?compatibleLanes(lane,nav.turn):[],turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:sig});updateDiagnostics(pos,m,lane,nav);maybeReroute(pos,nav)}
+function updateUi(pos){$("speed").textContent=Math.round(pos.speedMps*3.6);const m=nearestRoad(pos);S.previousMatch=S.lastMatch;S.lastMatch=m;S.matchQuality=m?.quality||0;if(!m){S.lastSignal=null;updateFusionState(pos,null,null,null);$("road").textContent="—";$("lane").textContent="—";$("confidence").textContent="—";$("advice").textContent="Route à confirmer";$("source").textContent="SOURCE GPS";updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateManeuverHud(null);updateFusionBadge(pos,null);updateDiagnostics(pos,null,null,null);return}const lane=stabilizeLane(updateLaneBelief(fuseLaneWithVision(estimateLane(m,pos)),m),m),nav=S.route?nextInstruction(pos):null,sig=relevantSignal(pos,m);S.lastLane=lane;S.lastNav=nav;S.lastSignal=sig;updateFusionState(pos,m,lane,nav);updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);updateManeuverHud(nav);updateFusionBadge(pos,m);voiceCue(nav);$("road").textContent=roadName(m.road);$("lane").textContent=lane.index?`${lane.index}/${lane.total}`:(lane.total?`?/${lane.total}`:"—");$("confidence").textContent=`${lane.confidence}%`;$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";$("source").textContent=lane.index?(lane.visionAssist&&S.visionCue?.stable?"GPS + VISION":"ESTIMATION"):"PAS ASSEZ PRÉCIS";if(nav){$("instruction").textContent=nav.instruction;$("detail").textContent=`${nav.detail} · ${lane.reason}`;$("advice").textContent=adviceText(lane,nav);if(nav.arrived){S.arrived=true;$("progressWrap").classList.remove("hidden");$("progressBar").style.width="100%";$("routeMeta").textContent="Arrivée";setStatus("Destination atteinte")}else if(Number.isFinite(nav.progress)){S.arrived=false;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${clamp(nav.progress*100,0,100)}%`;const rem=nav.remaining??S.route.distance;const eta=S.route?.distance?S.route.duration*(rem/S.route.distance):rem/Math.max(6,pos.speedMps||10);$("routeMeta").textContent=`${(rem/1000).toFixed(1)} km restants · ~${Math.max(1,Math.round(eta/60))} min`}}else{$("instruction").textContent=roadName(m.road);$("detail").textContent=lane.reason;$("advice").textContent=adviceText(lane,null)}draw3D({lane:lane.index||2,total:lane.total||3,current:lane.index||null,recommended:nav?recommendedLane(lane,nav.turn)||(lane.index||2):(lane.index||2),compatible:nav&&lane.hasTurnLanes?compatibleLanes(lane,nav.turn):[],turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:sig});updateDiagnostics(pos,m,lane,nav);maybeReroute(pos,nav)}
 async function startGps(){enableCompass();if(!window.isSecureContext){setStatus("GPS : ouvre bien l’adresse HTTPS GitHub Pages.");return}if(!navigator.geolocation){setStatus("GPS non disponible.");return}$("permission")?.remove();$("gpsBtn").classList.add("active");$("gpsBtn").querySelector("span").textContent="Actif";if(S.gpsWatch!==null)navigator.geolocation.clearWatch(S.gpsWatch);S.gpsWatch=navigator.geolocation.watchPosition(async p=>{const raw=gpsMeasurement(p);S.rawGps=raw;S.gps=smoothGps(raw);if(!S.visualGps)S.visualGps={...S.gps};S.heading=S.gps.heading;if(!S.areaCenter||haversineM(S.gps,S.areaCenter)>CFG.reloadAfterM)await loadRoadData(S.gps.lat,S.gps.lon);if(!S.environmentCenter||haversineM(S.gps,S.environmentCenter)>240)loadEnvironmentData(S.gps.lat,S.gps.lon);updateUi(S.gps);updateUserMarker(S.gps);recordSample();if(S.destination&&!S.route&&!S.routeLoading&&Date.now()-S.lastRouteAttemptAt>15000)calculateRoute(S.destination.lat,S.destination.lon,false);updateFusionBadge(S.gps,S.lastMatch)},e=>setStatus("GPS : "+e.message),{enableHighAccuracy:true,maximumAge:500,timeout:15000})}
 async function calculateRoute(lat,lon,isReroute=false){
   if(!S.gps){S.destination={lat,lon};setStatus("Destination mémorisée · en attente du GPS.");return}
@@ -562,7 +602,7 @@ function recordSample(){
     gps:{lat:S.gps.lat,lon:S.gps.lon,accuracy:S.rawGps?.accuracy??S.gps.accuracy,speedKph:+((S.gps.speedMps||0)*3.6).toFixed(1),heading:+(S.gps.heading||0).toFixed(1)},
     raw:S.rawGps?{lat:S.rawGps.lat,lon:S.rawGps.lon}:null,
     match:m?{distanceM:+m.distance.toFixed(2),quality:m.quality??0,score:+m.score.toFixed(2),road:roadName(m.road),wayId:m.road.id}:null,
-    lane:l?{index:l.index,total:l.total,confidence:l.confidence}:null,
+    lane:l?{index:l.index,total:l.total,confidence:l.confidence,belief:l.belief||null,beliefTop:l.beliefTop??null,beliefGap:l.beliefGap??null,lateralM:Number.isFinite(l.lateralM)?+l.lateralM.toFixed(2):null}:null,
     route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
