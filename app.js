@@ -415,8 +415,15 @@ function renderTruthButtons(lane=S.lastLane){
 function markLaneTruth(index){
   if(!S.gps||!S.lastLane?.total)return;
   S.currentTruth=index;
-  const ev={t:new Date().toISOString(),lane:index,total:S.lastLane.total,road:S.lastMatch?roadName(S.lastMatch.road):null,wayId:S.lastMatch?.road?.id||null,lat:S.gps.lat,lon:S.gps.lon};
-  S.truthEvents.push(ev);$("diagTruth").textContent=`voie ${index}/${S.lastLane.total}`;renderTruthButtons(S.lastLane);setStatus(`Vérité terrain enregistrée : voie ${index}/${S.lastLane.total}`)
+  const ev={
+    t:new Date().toISOString(),lane:index,total:S.lastLane.total,
+    predicted:S.lastLane.index,confidence:S.lastLane.confidence,
+    matchQuality:S.lastMatch?.quality??0,matchDistanceM:S.lastMatch?+S.lastMatch.distance.toFixed(2):null,
+    gpsAccuracy:S.rawGps?.accuracy??S.gps.accuracy,
+    vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary}:null,
+    road:S.lastMatch?roadName(S.lastMatch.road):null,wayId:S.lastMatch?.road?.id||null,lat:S.gps.lat,lon:S.gps.lon
+  };
+  S.truthEvents.push(ev);$("exportBtn").disabled=false;$("diagTruth").textContent=`voie ${index}/${S.lastLane.total}`;renderTruthButtons(S.lastLane);setStatus(`Vérité terrain enregistrée : voie ${index}/${S.lastLane.total}`)
 }
 function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav){
   if(!$("diagGps"))return;
