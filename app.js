@@ -22,7 +22,7 @@ function updateBeliefHud(lane=S.lastLane){
   const box=$("beliefHud");if(!box)return;box.replaceChildren();
   const probs=lane?.belief;if(!lane?.total||!Array.isArray(probs)||!probs.length){box.classList.add("hidden");return}
   box.classList.remove("hidden");let best=1,max=-1;probs.forEach((p,i)=>{if(p>max){max=p;best=i+1}});
-  probs.forEach((p,i)=>{const el=document.createElement("div");el.className="belief-lane"+(i+1===best?" best":"")+(i+1===lane.index?" current":"");const a=document.createElement("strong"),b=document.createElement("span");a.textContent=`V${i+1}`;b.textContent=`${Math.round(p*100)}%`;el.append(a,b);box.appendChild(el)})
+  probs.forEach((p,i)=>{const n=i+1,el=document.createElement("div");el.className="belief-lane"+(n===lane.index?" best current":n===best?" candidate":"");const a=document.createElement("strong"),b=document.createElement("span");a.textContent=`V${n}`;b.textContent=`${Math.round(p*100)}%`;el.append(a,b);box.appendChild(el)})
 }
 function updateManeuverHud(nav){
   const after=$("maneuverAfter");
