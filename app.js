@@ -1065,12 +1065,12 @@ function markLaneTruth(index){
 }
 function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav){
   if(!$("diagGps"))return;
-  $("diagGps").textContent=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)} m · ${Math.round((pos.speedMps||0)*3.6)} km/h`:"—";
+  $("diagGps").textContent=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)} m · ${Math.round((pos.speedMps||0)*3.6)} km/h${S.gpsDiagnostics.multipath>=20?` · MP${S.gpsDiagnostics.multipath}`:""}`:"—";
   $("diagMatch").textContent=m?`${m.distance.toFixed(1)} m · Q${m.quality??0}`:"—";
   $("diagHeading").textContent=pos?`${Math.round(pos.heading||0)}°`:"—";
-  $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
+  $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%${S.laneTransition.state!=="STABLE"?` · ${S.laneTransition.state}`:""}`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
   $("diagRoute").textContent=nav&&Number.isFinite(nav.offRoute)?`${nav.offRoute.toFixed(1)} m écart`:(S.route?"sur route":"—");
-  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";renderTruthButtons(lane);
+  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}${S.visionCalibration.active?` · CAL ${visionCalibrationBias()>=0?"+":""}${visionCalibrationBias().toFixed(1)}m`:""}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";renderTruthButtons(lane);
 }
 function recordSample(){
   if(!S.recording||!S.gps)return;
