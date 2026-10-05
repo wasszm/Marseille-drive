@@ -1,7 +1,7 @@
 {
   "name":"Marseille Drive",
   "short_name":"MDrive",
-  "start_url":"./?v=4",
+  "start_url":"./?v=5",
   "display":"standalone",
   "background_color":"#071015",
   "theme_color":"#071015",
