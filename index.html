@@ -1,23 +1,88 @@
 <!doctype html>
-<html lang="fr"><head>
+<html lang="fr">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#070b0e">
+<meta name="theme-color" content="#071015">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="./manifest.webmanifest?v=2">
-<link rel="apple-touch-icon" href="./icon.svg?v=2">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest?v=3">
+<link rel="apple-touch-icon" href="./icon.svg?v=3">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="./styles.css?v=2.0.1">
-<title>Marseille Drive — Beta 2</title></head><body>
-<div id="map"></div><canvas id="drive"></canvas><div id="car"></div>
+<link rel="stylesheet" href="./styles.css?v=3.0.0">
+<title>Marseille Drive — Beta 3</title>
+</head>
+<body>
+<div id="map"></div>
+<canvas id="drive"></canvas>
+<div id="car" aria-hidden="true"></div>
+
 <div class="hud">
-<div class="card top"><div><div class="brand">MARSEILLE DRIVE</div><div id="modeLabel" class="muted">BETA 2 · CARTE</div></div><div class="speed"><span id="speed">0</span><small> km/h</small></div></div>
-<div class="card metrics"><div><b id="lane">—</b><small>VOIE</small></div><div><b id="conf">—</b><small>CONFIANCE</small></div><div><b id="road">—</b><small>ROUTE</small></div><div><b id="signal">—</b><small>FEU</small></div></div>
-<div class="buttons"><button id="mapBtn" class="card active">🗺️ Carte</button><button id="driveBtn" class="card">🛣️ 3D</button><button id="gpsBtn" class="card">📍 GPS</button><button id="demoBtn" class="card">▶ Démo</button></div>
-<div id="status" class="card status">Carte prête</div>
-<div class="card bottom"><div class="muted">NAVIGATION</div><div id="instruction" class="instruction">Prêt pour le test</div><div id="detail" class="detail">Active le GPS ou lance la démonstration.</div><div id="advice" class="advice">Voie : en attente</div></div>
+  <section class="card topbar">
+    <div>
+      <div class="brand">MARSEILLE DRIVE</div>
+      <div id="modeLabel" class="muted">BETA 3 · CARTE RÉELLE</div>
+    </div>
+    <div class="speedbox"><span id="speed">0</span><small> km/h</small></div>
+  </section>
+
+  <section class="card metrics">
+    <div><b id="lane">—</b><small>VOIE</small></div>
+    <div><b id="confidence">—</b><small>CONFIANCE</small></div>
+    <div><b id="road">—</b><small>ROUTE</small></div>
+    <div><b id="signal">—</b><small>FEU</small></div>
+  </section>
+
+  <nav class="toolbar">
+    <button id="mapBtn" class="card tool active">🗺️<span>Carte</span></button>
+    <button id="driveBtn" class="card tool">🛣️<span>3D</span></button>
+    <button id="gpsBtn" class="card tool">📍<span>GPS</span></button>
+    <button id="visionBtn" class="card tool">📷<span>Vision</span></button>
+    <button id="demoBtn" class="card tool">▶<span>Démo</span></button>
+  </nav>
+
+  <div id="status" class="card status">Initialisation…</div>
+
+  <section id="routeCard" class="card route-card">
+    <div class="route-head">
+      <div>
+        <div class="eyebrow">ITINÉRAIRE</div>
+        <div id="routeTitle" class="route-title">Touchez la carte pour choisir une destination</div>
+      </div>
+      <button id="clearRoute" class="clear-btn" hidden>✕</button>
+    </div>
+    <div id="routeMeta" class="muted">Active d’abord le GPS.</div>
+  </section>
+
+  <section class="card nav-card">
+    <div class="eyebrow">NAVIGATION</div>
+    <div id="instruction" class="instruction">Prêt pour le test</div>
+    <div id="detail" class="detail">Active le GPS ou lance la démonstration.</div>
+    <div class="nav-row">
+      <div id="advice" class="advice">Voie : en attente</div>
+      <div id="source" class="source">SOURCE —</div>
+    </div>
+  </section>
 </div>
-<div id="permission" class="card permission"><b>Test sur iPhone</b><p>Active le GPS pour tester ta position réelle. Si tu es hors Marseille, les routes proches seront chargées autour de toi.</p><button id="allowGps">Activer le GPS</button><button id="later">Plus tard</button></div>
+
+<section id="permission" class="card permission">
+  <div class="permission-title">BETA 3 prête</div>
+  <p>Active le GPS. L’app charge les routes proches de ta position, même hors Marseille. Pour une destination, touche simplement la carte.</p>
+  <div class="permission-actions">
+    <button id="allowGps" class="primary">Activer le GPS</button>
+    <button id="later">Plus tard</button>
+  </div>
+</section>
+
+<section id="visionPanel" class="card vision-panel hidden">
+  <video id="camera" autoplay playsinline muted></video>
+  <div class="vision-footer">
+    <span>Caméra locale · aucune image envoyée</span>
+    <button id="closeVision">Fermer</button>
+  </div>
+</section>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./app.js?v=2.0.1"></script>
-</body></html>
+<script src="./app.js?v=3.0.0"></script>
+</body>
+</html>
