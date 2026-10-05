@@ -165,7 +165,7 @@ function toggleRecording(){
   }
   if(!S.gps){setStatus("Active le GPS avant d’enregistrer une trace.");return}
   if(!S.track.length)S.track=[];
-  S.recording=true;S.lastTrackAt=0;$("recordBtn").classList.add("recording");$("recordBtn").textContent="■ Arrêter (0)";
+  S.recording=true;S.lastTrackAt=0;$("recordBtn").classList.add("recording");$("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
   setStatus("Trace terrain locale démarrée")
 }
 function exportTrack(){
@@ -388,6 +388,9 @@ function bind(){
   $("allowGps").onclick=startGps;$("later").onclick=()=>$("permission")?.remove();$("closeVision").onclick=closeVision;$("clearRoute").onclick=clearRoute;$("streetRef").onclick=openStreetReference;
   $("searchForm").onsubmit=searchDestinationQuery;$("recenterBtn").onclick=recenterMap;$("diagBtn").onclick=toggleDiag;$("closeDiag").onclick=toggleDiag;$("recordBtn").onclick=toggleRecording;$("exportBtn").onclick=exportTrack;
   $("searchInput").addEventListener("input",()=>{if($("searchInput").value.trim().length<3)clearSearchResults()});
+  window.addEventListener("online",()=>setStatus("Connexion rétablie"));
+  window.addEventListener("offline",()=>setStatus("Hors ligne · GPS et caches locaux restent disponibles"));
+  window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.view==="map")setTimeout(()=>S.map.invalidateSize(),80)});
   window.addEventListener("resize",()=>{if(S.view==="drive")draw3D({lane:S.lastLane?.index||2,total:S.lastLane?.total||3,recommended:S.lastNav?recommendedLane(S.lastLane,S.lastNav.turn)||(S.lastLane?.index||2):(S.lastLane?.index||2),turn:S.lastNav?.turn||"through",distance:S.lastNav?.distance,arrived:S.lastNav?.arrived,signal:S.gps?relevantSignal(S.gps,S.lastMatch):null})})
 }
 async function boot(){
