@@ -913,12 +913,31 @@ async function calculateRoute(lat,lon,isReroute=false){
     if(S.routeLayer)S.map.removeLayer(S.routeLayer);S.routeLayer=L.polyline(S.routeCoords.map(p=>[p.lat,p.lon]),{color:"#fff",weight:7,opacity:.93,className:"route-line"}).addTo(S.map);
     if(!isReroute){S.followMap=false;document.body.classList.add("map-free");S.map.fitBounds(S.routeLayer.getBounds(),{padding:[45,45]})};
     $("routeMeta").textContent=`${(S.route.distance/1000).toFixed(1)} km · ~${Math.max(1,Math.round(S.route.duration/60))} min`;$("progressWrap").classList.remove("hidden");
-    setStatus(isReroute?"Nouvel itinéraire chargé":"Itinéraire chargé · passe en 3D quand tu veux");updateUi(S.gps)
+    saveTripSnapshot();setStatus(isReroute?"Nouvel itinéraire chargé":"Itinéraire chargé · passe en 3D quand tu veux");updateUi(S.gps)
   }catch(e){setStatus(e?.name==="AbortError"?"Calcul d’itinéraire trop long · réessaie.":"Itinéraire indisponible : "+e.message)}
   finally{clearTimeout(timer);S.routeLoading=false}
 }
+function saveTripSnapshot(){
+  if(!S.route||!S.destination)return;
+  try{
+    const snap={v:10,time:Date.now(),destination:{...S.destination},label:S.destinationLabel||null,route:{distance:S.route.distance,duration:S.route.duration,geometry:S.route.geometry,legs:S.route.legs}};
+    const raw=JSON.stringify(snap);if(raw.length<2200000)localStorage.setItem("mdTripV10",raw)
+  }catch(_){}
+}
+function restoreTripSnapshot(){
+  try{
+    const snap=JSON.parse(localStorage.getItem("mdTripV10")||"null");if(!snap||snap.v!==10||Date.now()-snap.time>6*60*60*1000||!snap.route?.geometry?.coordinates?.length)return false;
+    S.destination=snap.destination||null;S.destinationLabel=snap.label||null;S.route=snap.route;S.routeCoords=snap.route.geometry.coordinates.map(c=>({lat:c[1],lon:c[0]}));S.routeLengthM=snap.route.distance||0;
+    buildRouteCum();S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};buildRouteManeuvers();
+    S.routeLayer=L.polyline(S.routeCoords.map(p=>[p.lat,p.lon]),{color:"#fff",weight:7,opacity:.93,className:"route-line"}).addTo(S.map);
+    if(S.destination){const icon=L.divIcon({className:"",html:'<div class="destination-dot"></div>',iconSize:[16,16],iconAnchor:[8,16]});S.destinationMarker=L.marker([S.destination.lat,S.destination.lon],{icon}).addTo(S.map)}
+    $("routeTitle").textContent=S.destinationLabel||"Itinéraire restauré";$("routeMeta").textContent=`${(S.route.distance/1000).toFixed(1)} km · ~${Math.max(1,Math.round(S.route.duration/60))} min`;$("clearRoute").hidden=false;$("progressWrap").classList.remove("hidden");
+    try{S.map.fitBounds(S.routeLayer.getBounds(),{padding:[45,45]})}catch(_){}
+    setStatus("Itinéraire récent restauré · active le GPS");return true
+  }catch(_){return false}
+}
 function setDestination(lat,lon,label=null){S.destinationLabel=label;calculateRoute(lat,lon,false)}
-function clearRoute(){S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.routeLaneHints=[];S.routeIntersections=[];S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.aheadPrefetch={lastAt:0,center:null,loading:false,count:0};S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
+function clearRoute(){try{localStorage.removeItem("mdTripV10")}catch(_){}S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.routeLaneHints=[];S.routeIntersections=[];S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.aheadPrefetch={lastAt:0,center:null,loading:false,count:0};S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
 function speakNav(text){
   if(!S.voiceEnabled||!("speechSynthesis"in window)||!text)return;
   try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang="fr-FR";u.rate=.98;u.pitch=1;window.speechSynthesis.speak(u)}catch(_){}
@@ -1525,7 +1544,7 @@ function bind(){
   window.addEventListener("resize",()=>{if(S.view==="drive")draw3D(currentDrawState())})
 }
 async function boot(){
-  bind();initMap();setView("map");setStatus("BETA 9 · fusion + rendu fluide · active le GPS");if(!S.renderRaf)S.renderRaf=requestAnimationFrame(renderLoop);
+  bind();initMap();setView("map");if(!restoreTripSnapshot())setStatus("BETA 10 · horizon multi-capteurs · active le GPS");if(!S.renderRaf)S.renderRaf=requestAnimationFrame(renderLoop);
   if("serviceWorker"in navigator)try{
     const regs=await navigator.serviceWorker.getRegistrations();
     for(const reg of regs){const url=reg.active?.scriptURL||reg.waiting?.scriptURL||reg.installing?.scriptURL||"";if(url&&!url.includes("v=9.0.0"))await reg.unregister()}
