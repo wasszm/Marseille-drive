@@ -149,8 +149,8 @@ function nearestRoad(pos){
     let roadBest=null;
     for(let i=0;i<road.coords.length-1;i++){
       const a=road.coords[i],b=road.coords[i+1],seg=pointToSegment(pos,a,b);if(seg.distance>maxD)continue;
-      const rb=bearing(a,b),oneway=String(road.tags.oneway||"").toLowerCase(),dirHead=oneway==="-1"?(rb+180)%360:rb;
-      const headingErr=pos.speedMps>1.2&&Number.isFinite(pos.heading)?(oneway?angleDiff(pos.heading,dirHead):Math.min(angleDiff(pos.heading,rb),angleDiff(pos.heading,(rb+180)%360))):0;
+      const rb=bearing(a,b),oneway=String(road.tags.oneway||"").toLowerCase(),isOneWay=["yes","1","true","-1"].includes(oneway),dirHead=oneway==="-1"?(rb+180)%360:rb;
+      const headingErr=pos.speedMps>1.2&&Number.isFinite(pos.heading)?(isOneWay?angleDiff(pos.heading,dirHead):Math.min(angleDiff(pos.heading,rb),angleDiff(pos.heading,(rb+180)%360))):0;
       let score=seg.distance+headingErr*(pos.speedMps>3?.18:.10)+roadClassPenalty(road);
       if(prev){
         if(prev.road.id===road.id)score-=9;
