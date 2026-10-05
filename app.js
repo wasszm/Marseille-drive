@@ -391,7 +391,7 @@ function updateFusionState(pos,m,lane,nav){
   if(!f.position){
     f.position={lat:pos.lat,lon:pos.lon};f.along=routeProj?.along??null;f.lateralM=lateral;f.heading=pos.heading||0;f.speedMps=pos.speedMps||0;f.quality=q;f.mode="GPS";f.lastGpsAt=now;f.lastPredictAt=now;f.roadId=m?.road?.id||null;return f
   }
-  const strong=q>=58&&!S.rawGps?.rejected;
+  const mapSupport=Boolean(m)||(routeProj&&routeProj.distance<=28);const strong=q>=58&&!S.rawGps?.rejected&&mapSupport;
   if(S.routeCoords.length&&routeProj){
     if(f.along===null)f.along=routeProj.along;
     const innovation=routeProj.along-f.along,allowBack=pos.speedMps<1?.5:8,plausibleForward=Math.max(35,(pos.speedMps||0)*6+25);
