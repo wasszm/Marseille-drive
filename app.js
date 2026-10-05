@@ -184,7 +184,12 @@ function travelDirection(m,pos){
   const oneway=String(m.road.tags.oneway||"").toLowerCase();
   if(["yes","1","true"].includes(oneway))return"forward";
   if(oneway==="-1")return"backward";
-  if(pos.speedMps<1.5||!Number.isFinite(pos.heading))return"forward";
+  if(pos.speedMps<1.5){
+    if(S.lastLane?.dir&&S.previousMatch?.road?.id===m.road.id)return S.lastLane.dir;
+    if(Number.isFinite(pos.heading))return angleDiff(pos.heading,m.roadBearing)<=90?"forward":"backward";
+    return"forward"
+  }
+  if(!Number.isFinite(pos.heading))return S.lastLane?.dir||"forward";
   return angleDiff(pos.heading,m.roadBearing)<=90?"forward":"backward"
 }
 function signedLateralM(pos,nearest,rb){const d=haversineM(pos,nearest),b=bearing(nearest,pos);return Math.sin(rad(((b-rb+540)%360)-180))*d}
