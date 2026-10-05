@@ -17,7 +17,7 @@ function turnHudGlyph(turn){
 }
 function updateFusionBadge(pos=S.gps,m=effectiveMatch()){
   const f=S.fusion,h=S.sensorHealth,gps=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)}m`:"—",match=m?`M${m.quality??0}`:"M—",vision=S.visionCue?.stable?` · V${S.visionCue.confidence}`:"";
-  $("fusionBadge").textContent=`${f.mode} ${Math.round(f.quality||0)} · SENS ${h.overall||0} · GPS ${gps} · ${match}${vision}`
+  const transition=S.laneTransition.state!=="STABLE"?` · ${S.laneTransition.state}${S.laneTransition.direction>0?"→":S.laneTransition.direction<0?"←":""}`:"";$("fusionBadge").textContent=`${f.mode} ${Math.round(f.quality||0)} · SENS ${h.overall||0} · GPS ${gps} · ${match}${vision}${transition}`
 }
 function updateBeliefHud(lane=S.lastLane){
   const box=$("beliefHud");if(!box)return;box.replaceChildren();
@@ -35,11 +35,17 @@ function upcomingManeuvers(along=S.fusion.along??S.routeFilter.along??S.lastRout
   }
   return out
 }
+function laneHorizonCoverage(along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong){
+  const mans=upcomingManeuvers(along,4);if(!mans.length)return{percent:0,covered:0,total:0};
+  let covered=0;
+  mans.forEach((m,i)=>{const hint=routeLaneHintNear(m.along,60);if(hint||(i===0&&S.lastLane?.hasTurnLanes))covered++});
+  return{percent:Math.round(covered/mans.length*100),covered,total:mans.length}
+}
 function updateHorizonHud(nav=S.lastNav,lane=S.lastLane){
   const panel=$("horizonHud");if(!panel)return;
   if(!S.routeCoords.length){panel.classList.add("hidden");$("horizonItems").replaceChildren();return}
   const along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,items=upcomingManeuvers(along,3),hint=upcomingRouteLaneHint(along,1000);
-  panel.classList.remove("hidden");$("horizonQuality").textContent=`ROUTE Q${Math.round(S.routeFilter.quality||0)} · AMB ${Math.round((S.routeFilter.ambiguity||0)*100)}%`;
+  panel.classList.remove("hidden");const coverage=laneHorizonCoverage(along);$("horizonQuality").textContent=`ROUTE Q${Math.round(S.routeFilter.quality||0)} · DATA ${coverage.percent}% · AMB ${Math.round((S.routeFilter.ambiguity||0)*100)}%`;
   const box=$("horizonItems");box.replaceChildren();
   items.forEach((m,i)=>{
     const el=document.createElement("div");el.className="horizon-item"+(i===0?" primary":"");
