@@ -675,7 +675,7 @@ function recordSample(){
     raw:S.rawGps?{lat:S.rawGps.lat,lon:S.rawGps.lon}:null,
     match:m?{distanceM:+m.distance.toFixed(2),quality:m.quality??0,score:+m.score.toFixed(2),road:roadName(m.road),wayId:m.road.id}:null,
     lane:l?{index:l.index,total:l.total,confidence:l.confidence,belief:l.belief||null,beliefTop:l.beliefTop??null,beliefGap:l.beliefGap??null,lateralM:Number.isFinite(l.lateralM)?+l.lateralM.toFixed(2):null}:null,
-    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),gpsRejected:S.gpsRejected},vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY}:null
+    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),gpsRejected:S.gpsRejected},vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY,exposure:S.visionCue.exposure,lowLight:S.visionCue.lowLight}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
   $("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
@@ -767,8 +767,12 @@ function fuseLaneWithVision(lane){
 function analyzeVisionFrame(){
   const v=$("camera"),overlay=$("visionOverlay");if(!S.visionStream||v.readyState<2)return;
   const W=160,H=96,work=S.visionWork||(S.visionWork=document.createElement("canvas"));work.width=W;work.height=H;
-  const wc=work.getContext("2d",{willReadFrequently:true});wc.drawImage(v,0,0,W,H);
+  const wc=work.getContext("2d",{willReadFrequently:true}),vw=v.videoWidth||W,vh=v.videoHeight||H,target=W/H,ratio=vw/vh;
+  let sx0=0,sy0=0,sw=vw,sh=vh;if(ratio>target){sw=vh*target;sx0=(vw-sw)/2}else{sh=vw/target;sy0=(vh-sh)*.43}
+  wc.drawImage(v,sx0,sy0,sw,sh,0,0,W,H);
   let img;try{img=wc.getImageData(0,0,W,H).data}catch(_){return}
+  let sumLum=0,samples=0;for(let y=42;y<H;y+=4)for(let x=8;x<W-8;x+=4){sumLum+=visionLuma(img,(y*W+x)*4);samples++}
+  const avgLum=samples?sumLum/samples:110,lumThreshold=clamp(avgLum+30,92,172),edgeThreshold=clamp(15+(118-avgLum)*.055,14,29);
   const left=[],right=[];
   for(let y=48;y<94;y+=2){
     const spread=(y-46)*.76,leftExp=80-spread,rightExp=80+spread;
@@ -776,14 +780,14 @@ function analyzeVisionFrame(){
       let best=null;
       for(let x=Math.max(5,Math.floor(exp-21));x<=Math.min(W-6,Math.ceil(exp+21));x++){
         const i=(y*W+x)*4,lum=visionLuma(img,i),l=visionLuma(img,i-12),rr=visionLuma(img,i+12),score=lum-(l+rr)/2;
-        if(lum>125&&score>18&&(!best||score>best.score))best={x,y,score}
+        if(lum>lumThreshold&&score>edgeThreshold&&(!best||score>best.score))best={x,y,score}
       }
       if(best)out.push(best)
     }
   }
   const pointConf=clamp(Math.min(left.length,right.length)/20*100,0,100),cue=visionLaneCue(left,right,W,H,pointConf);
   if(cue.valid&&cue.alignment&&cue.confidence>=65)S.visionStableFrames=Math.min(20,S.visionStableFrames+1);else S.visionStableFrames=Math.max(0,S.visionStableFrames-1);
-  S.visionCue={...cue,left,right,stable:S.visionStableFrames>=3};
+  S.visionCue={...cue,left,right,stable:S.visionStableFrames>=3,exposure:Math.round(avgLum),lowLight:avgLum<72};
   const rect=v.getBoundingClientRect(),D=devicePixelRatio||1;overlay.width=Math.max(1,Math.round(rect.width*D));overlay.height=Math.max(1,Math.round(rect.height*D));
   const c=overlay.getContext("2d");c.setTransform(D,0,0,D,0,0);c.clearRect(0,0,rect.width,rect.height);
   const sx=rect.width/W,sy=rect.height/H;
@@ -792,7 +796,7 @@ function analyzeVisionFrame(){
   c.strokeStyle=cue.nearBoundary?"rgba(255,195,70,.9)":"rgba(255,255,255,.28)";c.lineWidth=2;c.beginPath();c.moveTo(rect.width*.5,rect.height*.49);c.lineTo(rect.width*.5,rect.height*.96);c.stroke();
   if(Number.isFinite(cue.vanishX)&&Number.isFinite(cue.vanishY)){c.fillStyle=cue.alignment?"rgba(80,240,160,.95)":"rgba(255,175,65,.95)";c.beginPath();c.arc(cue.vanishX*sx,cue.vanishY*sy,4,0,Math.PI*2);c.fill()}
   const state=!cue.alignment?"caméra à aligner":cue.valid?(cue.nearBoundary?"proche marquage":"centrage voie"):"repères incomplets";
-  $("visionStatus").textContent=`Vision ${cue.confidence}% · ${state} · fusion prudente`;
+  $("visionStatus").textContent=`Vision ${cue.confidence}% · ${state}${avgLum<72?" · faible lumière":""} · fusion prudente`;
   updateDiagnostics()
 }
 function setView(v){
@@ -1070,7 +1074,13 @@ function draw3D(d={}){
   const laneW=CFG.laneWidthM;
   const bus=[...new Set([...specialLaneIndexes("bus",total),...specialLaneIndexes("psv",total)])];
   if(bus.length){c.globalAlpha=.22;for(const idx of bus){const vi=layout.ownOffset+idx,l=-roadHalf+(vi-1)*laneW,r=l+laneW;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#4d8fb8")}c.globalAlpha=1}
-  const compatible=Array.isArray(d.compatible)?d.compatible.filter(i=>i>=1&&i<=total):[];
+  const access=Array.isArray(d.accessible)&&d.accessible.length===total?d.accessible:Array.from({length:total},()=>true);
+  for(let idx=1;idx<=total;idx++)if(access[idx-1]===false){
+    const vi=layout.ownOffset+idx,l=-roadHalf+(vi-1)*laneW,r=l+laneW;
+    c.globalAlpha=.18;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#7e3540");c.globalAlpha=1;
+    const p=screenAtForward(path,24+idx*3,w,h,hz),x=p.x+(-roadHalf+(vi-.5)*laneW)*p.ppm;c.fillStyle="rgba(255,255,255,.78)";c.font="900 7px -apple-system,Arial";c.textAlign="center";c.fillText("RÉSERVÉE",x,p.y)
+  }
+  const compatible=Array.isArray(d.compatible)?d.compatible.filter(i=>i>=1&&i<=total&&access[i-1]!==false):[];
   if(compatible.length){c.globalAlpha=.10;for(const idx of compatible){const vi=layout.ownOffset+idx,l=-roadHalf+(vi-1)*laneW,r=l+laneW;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#64ef9b")}c.globalAlpha=1}
   if(d.current&&d.current!==rec){const vi=layout.ownOffset+d.current,l=-roadHalf+(vi-1)*laneW,r=l+laneW;c.globalAlpha=.12;poly(c,[...offsetScreenPath(path,l,w,h,hz),...offsetScreenPath(path,r,w,h,hz).reverse()],"#4b9fff");c.globalAlpha=1}
   const visualRec=layout.ownOffset+rec,leftOffset=-roadHalf+(visualRec-1)*laneW,rightOffset=leftOffset+laneW;
