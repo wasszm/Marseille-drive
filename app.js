@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
@@ -617,6 +617,31 @@ function updateUserMarker(pos){
   const dot=S.userMarker.getElement()?.querySelector(".user-dot");if(dot){dot.style.transform=`rotate(${Math.round(pos.heading||S.heading||0)}deg)`;dot.classList.toggle("snapped",display.snapped);dot.classList.toggle("predictive",display.predictive)}
   if(S.view==="map"&&S.followMap)S.map.setView(ll,17,{animate:true})
 }
+function laneCenterOffset(lane,index){
+  const g=lane?.geometry;if(!g||!index||index<1||index>g.widths.length)return null;
+  return(g.bounds[index-1]+g.bounds[index])/2
+}
+function offsetMatchedRoad(m,lane,index){
+  const offset=laneCenterOffset(lane,index);if(!m||!Number.isFinite(offset))return[];
+  const src=m.road.coords,i=m.segmentIndex??0,dir=lane.dir||"forward",a=Math.max(0,i-8),b=Math.min(src.length,i+11),seq=src.slice(a,b);
+  if(dir==="backward")seq.reverse();if(seq.length<2)return[];
+  return seq.map((p,k)=>{
+    const prev=seq[Math.max(0,k-1)],next=seq[Math.min(seq.length-1,k+1)],rb=bearing(prev,next);
+    return destinationPoint(p,(rb+90)%360,offset)
+  })
+}
+function clearLaneMapOverlay(){
+  if(S.laneLayer){S.map.removeLayer(S.laneLayer);S.laneLayer=null}
+  if(S.targetLaneLayer){S.map.removeLayer(S.targetLaneLayer);S.targetLaneLayer=null}
+  S.laneOverlayKey=null
+}
+function updateLaneMapOverlay(m,lane,nav){
+  if(!S.map||!m||!lane?.index||lane.confidence<48){clearLaneMapOverlay();return}
+  const plan=nav?routeLaneStrategy(lane,nav):null,target=plan?.target||lane.index,key=`${m.road.id}:${lane.dir}:${lane.index}:${target}:${Math.round(lane.geometry?.placementShift||0)}`;
+  if(S.laneOverlayKey===key)return;clearLaneMapOverlay();S.laneOverlayKey=key;
+  const current=offsetMatchedRoad(m,lane,lane.index);if(current.length>1)S.laneLayer=L.polyline(current.map(p=>[p.lat,p.lon]),{color:"#56a8ff",weight:5,opacity:.9,dashArray:"1 0",className:"lane-center-line"}).addTo(S.map);
+  if(target&&target!==lane.index){const dest=offsetMatchedRoad(m,lane,target);if(dest.length>1)S.targetLaneLayer=L.polyline(dest.map(p=>[p.lat,p.lon]),{color:"#45e58a",weight:5,opacity:.9,dashArray:"8 8",className:"lane-target-line"}).addTo(S.map)}
+}
 function buildRouteCum(){
   S.routeCum=[0];let cum=0;
   for(let i=0;i<S.routeCoords.length-1;i++){cum+=haversineM(S.routeCoords[i],S.routeCoords[i+1]);S.routeCum.push(cum)}
@@ -900,7 +925,7 @@ function updateUi(pos){
   if(observed&&observed.quality>=45){S.lastGoodMatch=observed;S.lastGoodMatchAt=Date.now()}
   const m=observed||effectiveMatch();
   if(!m){
-    S.lastSignal=null;updateFusionState(pos,null,null,null);
+    S.lastSignal=null;clearLaneMapOverlay();updateFusionState(pos,null,null,null);
     const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null;S.lastNav=nav;
     $("road").textContent="—";$("lane").textContent=S.lastLane?.index?`${S.lastLane.index}/${S.lastLane.total}`:"—";$("confidence").textContent=S.lastLane?`${Math.max(0,S.lastLane.confidence-15)}%`:"—";
     $("advice").textContent=S.fusion.mode==="PRÉDICTIF"?"Position prédite · voie non confirmée":"Route à confirmer";$("source").textContent=S.fusion.mode;
@@ -912,7 +937,7 @@ function updateUi(pos){
     const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null,sig=relevantSignal(navPos,m);S.lastNav=nav;S.lastSignal=sig;
     if(S.lastLane)S.lastLane={...S.lastLane,confidence:Math.max(0,S.lastLane.confidence-6),reason:"Voie maintenue par mémoire courte"};
     $("road").textContent=roadName(m.road);$("lane").textContent=S.lastLane?.index?`${S.lastLane.index}/${S.lastLane.total}`:"—";$("confidence").textContent=S.lastLane?`${S.lastLane.confidence}%`:"—";$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";
-    $("source").textContent="PRÉDICTIF";$("advice").textContent="Position et voie maintenues temporairement · attente GPS";
+    $("source").textContent="PRÉDICTIF";$("advice").textContent="Position et voie maintenues temporairement · attente GPS";updateLaneMapOverlay(m,S.lastLane,nav);
     updateSpeedLimit(m,pos);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(S.lastLane);updateHorizonHud(nav,S.lastLane);updateDiagnostics(navPos,m,S.lastLane,nav);draw3D(currentDrawState());return
   }
   const rawLane=fuseLaneWithVision(estimateLane(m,pos)),lane=stabilizeLane(updateLaneBelief(rawLane,m),m);S.lastLane=lane;
@@ -920,7 +945,7 @@ function updateUi(pos){
   const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null,sig=relevantSignal(navPos,m);S.lastNav=nav;S.lastSignal=sig;
   updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(lane);updateHorizonHud(nav,lane);voiceCue(nav);
   $("road").textContent=roadName(m.road);$("lane").textContent=lane.index?`${lane.index}/${lane.total}`:(lane.total?`?/${lane.total}`:"—");$("confidence").textContent=`${lane.confidence}%`;$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";
-  $("source").textContent=S.fusion.mode==="PRÉDICTIF"?"PRÉDICTIF":lane.index?(lane.visionAssist&&S.visionCue?.stable?"FUSION + VISION":"FUSION"):"PAS ASSEZ PRÉCIS";
+  $("source").textContent=S.fusion.mode==="PRÉDICTIF"?"PRÉDICTIF":lane.index?(lane.visionAssist&&S.visionCue?.stable?"FUSION + VISION":"FUSION"):"PAS ASSEZ PRÉCIS";updateLaneMapOverlay(m,lane,nav);
   if(nav){
     $("instruction").textContent=nav.instruction;$("detail").textContent=`${nav.detail} · ${lane.reason}`;$("advice").textContent=adviceText(lane,nav);
     if(nav.arrived){S.arrived=true;$("progressWrap").classList.remove("hidden");$("progressBar").style.width="100%";$("routeMeta").textContent="Arrivée";setStatus("Destination atteinte")}
@@ -968,7 +993,7 @@ function restoreTripSnapshot(){
   }catch(_){return false}
 }
 function setDestination(lat,lon,label=null){S.destinationLabel=label;calculateRoute(lat,lon,false)}
-function clearRoute(){try{localStorage.removeItem("mdTripV10")}catch(_){}S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.routeLaneHints=[];S.routeIntersections=[];S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.aheadPrefetch={lastAt:0,center:null,loading:false,count:0};S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
+function clearRoute(){try{localStorage.removeItem("mdTripV10")}catch(_){}clearLaneMapOverlay();S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.routeLaneHints=[];S.routeIntersections=[];S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.aheadPrefetch={lastAt:0,center:null,loading:false,count:0};S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
 function speakNav(text){
   if(!S.voiceEnabled||!("speechSynthesis"in window)||!text)return;
   try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang="fr-FR";u.rate=.98;u.pitch=1;window.speechSynthesis.speak(u)}catch(_){}
