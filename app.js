@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,visionCalibration:{samples:[],biasM:0,mad:99,active:false},compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,gpsDiagnostics:{history:[],multipath:0,jitterEvents:0,roadSwitches:0},visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,visionCalibration:{samples:[],biasM:0,mad:99,active:false},compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
@@ -17,7 +17,7 @@ function turnHudGlyph(turn){
 }
 function updateFusionBadge(pos=S.gps,m=effectiveMatch()){
   const f=S.fusion,h=S.sensorHealth,gps=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)}m`:"—",match=m?`M${m.quality??0}`:"M—",vision=S.visionCue?.stable?` · V${S.visionCue.confidence}`:"";
-  const transition=S.laneTransition.state!=="STABLE"?` · ${S.laneTransition.state}${S.laneTransition.direction>0?"→":S.laneTransition.direction<0?"←":""}`:"";$("fusionBadge").textContent=`${f.mode} ${Math.round(f.quality||0)} · SENS ${h.overall||0} · GPS ${gps} · ${match}${vision}${transition}`
+  const mp=S.gpsDiagnostics.multipath>=25?` · MP ${S.gpsDiagnostics.multipath}`:"",transition=S.laneTransition.state!=="STABLE"?` · ${S.laneTransition.state}${S.laneTransition.direction>0?"→":S.laneTransition.direction<0?"←":""}`:"";$("fusionBadge").textContent=`${f.mode} ${Math.round(f.quality||0)} · SENS ${h.overall||0} · GPS ${gps} · ${match}${vision}${mp}${transition}`
 }
 function updateBeliefHud(lane=S.lastLane){
   const box=$("beliefHud");if(!box)return;box.replaceChildren();
@@ -515,8 +515,20 @@ async function enableCompass(){
     window.addEventListener("deviceorientation",onDeviceOrientation,true)
   }catch(_){}
 }
+function updateGpsDiagnostics(pos,m){
+  const D=S.gpsDiagnostics,now=Date.now(),dir=m?travelDirection(m,pos):null,rb=m?(dir==="forward"?m.roadBearing:(m.roadBearing+180)%360):null,lateral=m?signedLateralM(pos,m.nearest,rb):null;
+  const item={t:now,lat:pos.lat,lon:pos.lon,accuracy:S.rawGps?.accuracy??pos.accuracy??999,speed:pos.speedMps||0,roadId:m?.road?.id||null,lateral,matchQuality:m?.quality||0};
+  const prev=D.history[D.history.length-1];D.history.push(item);while(D.history.length>12||D.history[0]&&now-D.history[0].t>14000)D.history.shift();
+  if(prev){
+    const dt=clamp((now-prev.t)/1000,.1,5),jump=haversineM(prev,item),expected=((prev.speed+item.speed)/2)*dt,residual=Math.max(0,jump-expected-Math.max(prev.accuracy,item.accuracy)*.4);
+    const lateralJump=Number.isFinite(lateral)&&Number.isFinite(prev.lateral)?Math.abs(lateral-prev.lateral):0,roadSwitch=prev.roadId&&item.roadId&&prev.roadId!==item.roadId;
+    if((lateralJump>3.2&&dt<2.5)||(residual>8&&dt<2.2))D.jitterEvents=Math.min(8,D.jitterEvents+1);else D.jitterEvents=Math.max(0,D.jitterEvents-.3);
+    if(roadSwitch&&S.previousMatch?.road&&!roadsConnected(S.previousMatch.road,m?.road))D.roadSwitches=Math.min(6,D.roadSwitches+1);else D.roadSwitches=Math.max(0,D.roadSwitches-.22)
+  }
+  const accPenalty=Math.max(0,(item.accuracy-11)*1.4),raw=D.jitterEvents*12+D.roadSwitches*15+accPenalty;D.multipath=Math.round(clamp(D.multipath*.62+raw*.38,0,100));return D
+}
 function sensorHealth(pos=S.gps,m=S.lastMatch){
-  const acc=S.rawGps?.accuracy??pos?.accuracy??999,gps=clamp(Math.round(100-(acc-3)*3.6-(S.rawGps?.rejected?42:0)),0,100),map=m?clamp(Math.round(m.quality||0),0,100):0;
+  const acc=S.rawGps?.accuracy??pos?.accuracy??999,mp=S.gpsDiagnostics.multipath||0,gps=clamp(Math.round((100-(acc-3)*3.6-(S.rawGps?.rejected?42:0))*(1-mp*.0065)),0,100),map=m?clamp(Math.round(m.quality||0),0,100):0;
   const route=S.routeCoords.length?clamp(Math.round((S.routeFilter.quality||0)*(1-(S.routeFilter.ambiguity||0)*.55)),0,100):map;
   const vision=S.visionCue?.stable&&S.visionCue?.alignment?clamp(Math.round(S.visionCue.confidence||0),0,100):0;
   let compass=0;if(S.compassActive&&Number.isFinite(S.compassHeading)){compass=70;const ref=m&&pos?(travelDirection(m,pos)==="forward"?m.roadBearing:(m.roadBearing+180)%360):pos?.heading;if(Number.isFinite(ref))compass=clamp(Math.round(90-angleDiff(S.compassHeading,ref)*.7),15,95)}
@@ -939,7 +951,7 @@ async function maybeReroute(rawPos,nav){
 }
 function updateUi(pos){
   $("speed").textContent=Math.round(pos.speedMps*3.6);if(S.routeCoords.length)updateRouteFilter(pos);
-  const observed=nearestRoad(pos);S.previousMatch=S.lastMatch;S.lastMatch=observed;S.matchQuality=observed?.quality||0;sensorHealth(pos,observed);
+  const observed=nearestRoad(pos);S.previousMatch=S.lastMatch;S.lastMatch=observed;S.matchQuality=observed?.quality||0;updateGpsDiagnostics(pos,observed);sensorHealth(pos,observed);
   if(observed&&observed.quality>=45){S.lastGoodMatch=observed;S.lastGoodMatchAt=Date.now()}
   const m=observed||effectiveMatch();
   if(!m){
@@ -1068,7 +1080,7 @@ function recordSample(){
     t:new Date(now).toISOString(),
     gps:{lat:S.gps.lat,lon:S.gps.lon,accuracy:S.rawGps?.accuracy??S.gps.accuracy,speedKph:+((S.gps.speedMps||0)*3.6).toFixed(1),heading:+(S.gps.heading||0).toFixed(1),rejected:Boolean(S.rawGps?.rejected)},
     raw:S.rawGps?{lat:S.rawGps.lat,lon:S.rawGps.lon}:null,
-    sensors:{...S.sensorHealth},
+    sensors:{...S.sensorHealth,multipath:S.gpsDiagnostics.multipath,jitterEvents:+S.gpsDiagnostics.jitterEvents.toFixed(1),roadSwitches:+S.gpsDiagnostics.roadSwitches.toFixed(1)},
     match:m?{distanceM:+m.distance.toFixed(2),quality:m.quality??0,score:+m.score.toFixed(2),road:roadName(m.road),wayId:m.road.id}:null,
     lane:l?{index:l.index,total:l.total,confidence:l.confidence,belief:l.belief||null,beliefTop:l.beliefTop??null,beliefGap:l.beliefGap??null,lateralM:Number.isFinite(l.lateralM)?+l.lateralM.toFixed(2):null,lateralRawM:Number.isFinite(l.lateralRawM)?+l.lateralRawM.toFixed(2):null,transition:l.transition||null,calibration:l.calibration||null}:null,
     lanePlan:plan?{target:plan.target,next:plan.next,compatible:plan.compatible,source:plan.source,strategic:plan.strategic,tight:plan.tight,budget:plan.budget,hintDistance:plan.hintDistance}:null,
@@ -1112,7 +1124,7 @@ function exportTrack(){
 function resetFusionForReplay(){
   S.fusion={position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null};S.sensorHealth={gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"};
   S.laneBelief={roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0};S.laneCalibration={byRoad:{}};S.laneTransition={state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0};S.visionCalibration={samples:[],biasM:0,mad:99,active:false};
-  S.laneFilter={roadId:null,index:null,candidate:null,hits:0};S.lastMatch=null;S.lastGoodMatch=null;S.lastGoodMatchAt=0;S.previousMatch=null;S.lastLane=null;S.lastNav=null;S.lastSignal=null;S.visualGps=null;S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.gpsRejected=0
+  S.laneFilter={roadId:null,index:null,candidate:null,hits:0};S.lastMatch=null;S.lastGoodMatch=null;S.lastGoodMatchAt=0;S.previousMatch=null;S.lastLane=null;S.lastNav=null;S.lastSignal=null;S.visualGps=null;S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.gpsRejected=0;S.gpsDiagnostics={history:[],multipath:0,jitterEvents:0,roadSwitches:0}
 }
 function replayTruthIndex(points,truth){
   const map=new Map();if(!Array.isArray(truth)||!truth.length)return map;
