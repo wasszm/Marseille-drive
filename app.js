@@ -1664,7 +1664,7 @@ function drawProjectedBranch(c,points,pos,heading,w,h,hz,widthM,day,highlight=fa
   }
 }
 function drawMappedJunctions(c,w,h,hz,heading,path,metrics){
-  const pos=scenePosition();if(S.demo||!pos||!S.junctions.length)return;const candidates=[];
+  const pos=scenePosition();if(S.demo||!pos||!S.junctions.length)return;const candidates=[];let labels=0;
   for(const j of S.junctions){
     const local=geoToLocal(pos,heading,j);if(local.forward<18||local.forward>170||Math.abs(local.side)>55)continue;
     const rp=S.routeCoords.length?routeProjection(j,S.lastRouteAlong):null;if(S.routeCoords.length&&rp&&rp.distance>32)continue;candidates.push({...j,local})
@@ -1674,7 +1674,12 @@ function drawMappedJunctions(c,w,h,hz,heading,path,metrics){
     for(const branch of j.branches){
       const rel=signedAngle(heading,branch.bearing);if(Math.abs(rel)<24||Math.abs(rel)>158)continue;
       const geom=branchGeometry(j,branch,S.scene3d.quality==="HIGH"?82:58),width=roadApproxWidthM(branch.road.tags);
-      if(geom.length>1)drawProjectedBranch(c,geom,pos,heading,w,h,hz,width,isDayScene(),false)
+      if(geom.length>1){
+        drawProjectedBranch(c,geom,pos,heading,w,h,hz,width,isDayScene(),false);
+        const name=branch.road.tags?.name||branch.road.tags?.ref;if(name&&labels<(S.scene3d.quality==="HIGH"?4:2)&&j.local.forward<125){
+          const anchor=geom[Math.min(2,geom.length-1)],local=geoToLocal(pos,heading,anchor);if(local.forward>5){const p=roadScreenPoint(local,w,h,hz),txt=String(name).slice(0,20);c.save();c.font="800 7px -apple-system,Arial";const tw=c.measureText?c.measureText(txt).width:txt.length*4.2;c.fillStyle="rgba(8,14,18,.62)";c.fillRect(p.x-tw/2-4,p.y-15,tw+8,12);c.fillStyle="rgba(255,255,255,.82)";c.textAlign="center";c.fillText(txt,p.x,p.y-6);c.restore();labels++}
+        }
+      }
     }
   }
 }
