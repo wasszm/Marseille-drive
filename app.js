@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
@@ -740,9 +740,64 @@ function calibrationSummary(){
 }
 function exportTrack(){
   if(!S.track.length&&!S.truthEvents.length)return;
-  const payload={app:"Marseille Drive",version:"BETA 9",exportedAt:new Date().toISOString(),summary:calibrationSummary(),points:S.track,truthEvents:S.truthEvents};
+  const payload={app:"Marseille Drive",version:"BETA 9",exportedAt:new Date().toISOString(),summary:calibrationSummary(),points:S.track,truthEvents:S.truthEvents,destination:S.destination?{...S.destination,label:S.destinationLabel||null}:null,route:S.route?{distance:S.route.distance,duration:S.route.duration,geometry:S.route.geometry,legs:S.route.legs}:null};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download=`marseille-drive-trace-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)
+}
+function resetFusionForReplay(){
+  S.fusion={position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null};
+  S.laneBelief={roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0};
+  S.laneFilter={roadId:null,index:null,candidate:null,hits:0};S.lastMatch=null;S.lastGoodMatch=null;S.lastGoodMatchAt=0;S.previousMatch=null;S.lastLane=null;S.lastNav=null;S.lastSignal=null;S.visualGps=null;S.lastRouteAlong=null;S.gpsRejected=0
+}
+function replayTruthIndex(points,truth){
+  const map=new Map();if(!Array.isArray(truth)||!truth.length)return map;
+  const times=points.map(p=>Date.parse(p.t||"")||0);
+  for(const ev of truth){
+    const t=Date.parse(ev.t||"");if(!t)continue;let best=-1,bestD=Infinity;
+    for(let i=0;i<times.length;i++){const d=Math.abs(times[i]-t);if(d<bestD){bestD=d;best=i}}
+    if(best>=0&&bestD<=1800){if(!map.has(best))map.set(best,[]);map.get(best).push(ev)}
+  }
+  return map
+}
+function applyReplayRoute(payload){
+  if(!payload?.route?.geometry?.coordinates?.length)return;
+  S.route=payload.route;S.routeCoords=payload.route.geometry.coordinates.map(c=>({lat:c[1],lon:c[0]}));S.routeLengthM=payload.route.distance||0;buildRouteCum();buildRouteManeuvers();
+  if(payload.destination){S.destination={lat:Number(payload.destination.lat),lon:Number(payload.destination.lon)};S.destinationLabel=payload.destination.label||null}
+  if(S.routeLayer)S.map.removeLayer(S.routeLayer);S.routeLayer=L.polyline(S.routeCoords.map(p=>[p.lat,p.lon]),{color:"#fff",weight:7,opacity:.93,className:"route-line"}).addTo(S.map)
+}
+function replayPointAt(index){
+  const p=S.replayPoints[index],g=p?.gps;if(!g)return;
+  const raw={lat:Number(g.lat),lon:Number(g.lon),accuracy:Number(g.accuracy)||8,speedMps:Math.max(0,(Number(g.speedKph)||0)/3.6),heading:Number(g.heading)||0,t:Date.now(),rejected:false};
+  S.rawGps=raw;S.gps={...raw};S.heading=raw.heading;S.lastAcceptedRaw={...raw};S.visualGps={...raw};updateUi(S.gps);updateUserMarker(S.gps);
+  const truths=S.replayTruthByIndex?.get(index)||[];
+  for(const truth of truths){
+    const predicted=S.lastLane?.index??null,correct=Number.isFinite(predicted)&&predicted===Number(truth.lane);
+    S.replayResults.push({index,t:p.t||null,truth:Number(truth.lane),predicted,correct});
+  }
+  const compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,score=$("replayScore");
+  score.textContent=`Replay ${index+1}/${S.replayPoints.length} · vérité ${correct}/${compared.length||0}`;score.classList.remove("hidden")
+}
+function stopReplay(done=false){
+  clearInterval(S.replayTimer);S.replayTimer=null;
+  if(!S.replayActive&&!done)return;S.replayActive=false;
+  $("stopReplayBtn").classList.add("hidden");$("replayBtn").classList.remove("hidden");
+  const compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,pct=compared.length?Math.round(correct/compared.length*100):null;
+  $("replayScore").textContent=done?`Replay terminé · ${compared.length} contrôles · ${pct===null?"—":pct+"%"} corrects`:"Replay arrêté";
+  setStatus(done?"Replay terminé":"Replay arrêté")
+}
+async function loadReplayFile(ev){
+  const file=ev?.target?.files?.[0];if(!file)return;
+  try{
+    const payload=JSON.parse(await file.text()),points=Array.isArray(payload.points)?payload.points:[];
+    if(points.length<2)throw Error("Trace vide ou incompatible");
+    stopReplay();if(S.gpsWatch!==null){navigator.geolocation?.clearWatch?.(S.gpsWatch);S.gpsWatch=null}
+    if(S.demo){S.demo=false;clearInterval(S.demoTimer);S.demoTimer=null}
+    resetFusionForReplay();S.replayPoints=points;S.replayIndex=0;S.replayResults=[];S.replayTruthByIndex=replayTruthIndex(points,payload.truthEvents||[]);
+    applyReplayRoute(payload);const first=points[0].gps;if(first?.lat&&first?.lon)await loadRoadData(Number(first.lat),Number(first.lon));
+    S.replayActive=true;$("replayBtn").classList.add("hidden");$("stopReplayBtn").classList.remove("hidden");$("replayScore").classList.remove("hidden");setView("drive");setStatus(`Replay local · ${points.length} points`);
+    replayPointAt(0);S.replayTimer=setInterval(()=>{S.replayIndex++;if(S.replayIndex>=S.replayPoints.length){stopReplay(true);return}replayPointAt(S.replayIndex)},450)
+  }catch(e){setStatus("Replay impossible : "+e.message)}
+  finally{if(ev?.target)ev.target.value=""}
 }
 function toggleDiag(){
   const p=$("diagPanel");p.classList.toggle("hidden");if(!p.classList.contains("hidden"))updateDiagnostics()
@@ -1141,7 +1196,7 @@ function draw3D(d={}){
 function bind(){
   $("mapBtn").onclick=()=>setView("map");$("driveBtn").onclick=()=>setView("drive");$("gpsBtn").onclick=startGps;$("visionBtn").onclick=toggleVision;$("demoBtn").onclick=startDemo;
   $("allowGps").onclick=startGps;$("later").onclick=()=>$("permission")?.remove();$("closeVision").onclick=closeVision;$("clearRoute").onclick=clearRoute;$("streetRef").onclick=openStreetReference;
-  $("searchForm").onsubmit=searchDestinationQuery;$("recenterBtn").onclick=recenterMap;$("voiceBtn").onclick=toggleVoice;$("diagBtn").onclick=toggleDiag;$("closeDiag").onclick=toggleDiag;$("recordBtn").onclick=toggleRecording;$("exportBtn").onclick=exportTrack;
+  $("searchForm").onsubmit=searchDestinationQuery;$("recenterBtn").onclick=recenterMap;$("voiceBtn").onclick=toggleVoice;$("diagBtn").onclick=toggleDiag;$("closeDiag").onclick=toggleDiag;$("recordBtn").onclick=toggleRecording;$("exportBtn").onclick=exportTrack;$("replayBtn").onclick=()=>$("replayInput").click();$("replayInput").onchange=loadReplayFile;$("stopReplayBtn").onclick=()=>stopReplay(false);
   $("searchInput").addEventListener("input",()=>{if($("searchInput").value.trim().length<3)clearSearchResults()});
   window.addEventListener("online",()=>setStatus("Connexion rétablie"));
   window.addEventListener("offline",()=>setStatus("Hors ligne · GPS et caches locaux restent disponibles"));
