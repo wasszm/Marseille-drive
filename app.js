@@ -128,31 +128,37 @@ function roadClassPenalty(road){
   return({motorway:0,trunk:0,primary:0,secondary:1,tertiary:2,residential:3,unclassified:4,service:7,living_street:6})[h]??5
 }
 function nearestRoad(pos){
-  let best=null,second=null;
-  const prev=S.lastMatch,maxD=Math.max(CFG.maxRoadDistanceM,Math.min(70,(pos.accuracy||20)*2.2));
+  const prev=S.lastMatch,maxD=Math.max(CFG.maxRoadDistanceM,Math.min(70,(pos.accuracy||20)*2.2)),candidates=[];
   for(const road of S.roads){
+    let roadBest=null;
     for(let i=0;i<road.coords.length-1;i++){
       const a=road.coords[i],b=road.coords[i+1],seg=pointToSegment(pos,a,b);if(seg.distance>maxD)continue;
-      const rb=bearing(a,b),dirHead=String(road.tags.oneway||"").toLowerCase()==="-1"?(rb+180)%360:rb;
-      const headingErr=pos.speedMps>1.2&&Number.isFinite(pos.heading)?Math.min(angleDiff(pos.heading,dirHead),angleDiff(pos.heading,(dirHead+180)%360)):0;
+      const rb=bearing(a,b),oneway=String(road.tags.oneway||"").toLowerCase(),dirHead=oneway==="-1"?(rb+180)%360:rb;
+      const headingErr=pos.speedMps>1.2&&Number.isFinite(pos.heading)?(oneway?angleDiff(pos.heading,dirHead):Math.min(angleDiff(pos.heading,rb),angleDiff(pos.heading,(rb+180)%360))):0;
       let score=seg.distance+headingErr*(pos.speedMps>3?.18:.10)+roadClassPenalty(road);
       if(prev){
         if(prev.road.id===road.id)score-=9;
         else if(roadsConnected(prev.road,road))score-=3;
         else if(pos.speedMps>2.5)score+=8
       }
-      if(S.routeCoords.length){
-        const rp=routeProjection({lat:seg.nearest.lat,lon:seg.nearest.lon},null);
-        if(rp)score+=Math.min(30,rp.distance*.7)
-      }
-      const cand={road,distance:seg.distance,nearest:seg.nearest,roadBearing:rb,segmentIndex:i,segmentT:seg.t,headingError:headingErr,score};
-      if(!best||score<best.score){second=best;best=cand}else if(!second||score<second.score)second=cand
+      const cand={road,distance:seg.distance,nearest:seg.nearest,roadBearing:rb,segmentIndex:i,segmentT:seg.t,headingError:headingErr,baseScore:score,score};
+      if(!roadBest||score<roadBest.score)roadBest=cand
+    }
+    if(roadBest)candidates.push(roadBest)
+  }
+  if(!candidates.length)return null;
+  candidates.sort((a,b)=>a.baseScore-b.baseScore);
+  const shortlist=candidates.slice(0,Math.min(16,candidates.length));
+  if(S.routeCoords.length){
+    for(const cand of shortlist){
+      const rp=routeProjection(cand.nearest,S.lastRouteAlong);
+      if(rp)cand.score=cand.baseScore+Math.min(30,rp.distance*.7)
     }
   }
-  if(best){
-    const gap=second?second.score-best.score:25;
-    best.quality=clamp(Math.round(100-best.distance*1.4-best.headingError*.35+Math.min(18,gap)),0,100)
-  }
+  shortlist.sort((a,b)=>a.score-b.score);
+  const best=shortlist[0],second=shortlist[1];
+  const gap=second?second.score-best.score:25;
+  best.quality=clamp(Math.round(100-best.distance*1.4-best.headingError*.35+Math.min(18,gap)),0,100);
   return best
 }
 function travelDirection(m,pos){
