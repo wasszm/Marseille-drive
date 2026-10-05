@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
@@ -112,21 +112,34 @@ function environmentObject(e){
 }
 async function loadEnvironmentData(lat,lon){
   if(S.environmentLoading)return;S.environmentLoading=true;S.environmentCenter={lat,lon};
-  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out geom tags;`;
+  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out body geom;`;
   try{
     const data=await fetchOverpass(q),objects=[];
     for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}
-    objects.sort((a,b)=>haversineM({lat,lon},a)-haversineM({lat,lon},b));S.environment=objects.slice(0,650);
+    objects.sort((a,b)=>haversineM({lat,lon},a)-haversineM({lat,lon},b));S.environment=objects.slice(0,650);S.sceneEnvCache=null;
     try{localStorage.setItem("mdEnvCacheV1",JSON.stringify({lat,lon,time:Date.now(),objects:S.environment}))}catch(_){}
     if($("envBadge"))$("envBadge").textContent=`URBAIN ${S.environment.length}`
   }catch(e){
     let used=false;
-    try{const cache=JSON.parse(localStorage.getItem("mdEnvCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<2500){S.environment=cache.objects||[];S.environmentCenter={lat:cache.lat,lon:cache.lon};used=true}}catch(_){}
+    try{const cache=JSON.parse(localStorage.getItem("mdEnvCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<2500){S.environment=cache.objects||[];S.sceneEnvCache=null;S.environmentCenter={lat:cache.lat,lon:cache.lon};used=true}}catch(_){}
     if($("envBadge"))$("envBadge").textContent=used?`CACHE ${S.environment.length}`:"URBAIN —"
   }finally{S.environmentLoading=false}
 }
 function signedAngle(from,to){return((to-from+540)%360)-180}
-function visibleEnvironment(pos,heading,maxM=260){if(!pos||!S.environment.length)return[];const out=[];for(const o of S.environment){const d=haversineM(pos,o);if(d<5||d>maxM)continue;const a=signedAngle(heading,bearing(pos,o)),forward=Math.cos(rad(a))*d,side=Math.sin(rad(a))*d;if(forward<5||forward>maxM||Math.abs(side)>130)continue;out.push({...o,distance:d,forward,side})}return out.sort((a,b)=>b.forward-a.forward).slice(0,90)}
+function visibleEnvironment(pos,heading,maxM=260){
+  if(!pos||!S.environment.length)return[];
+  const key=`${Math.round(pos.lat*1e5)}:${Math.round(pos.lon*1e5)}:${Math.round((heading||0)/4)}:${S.environment.length}`;
+  let base=S.sceneEnvCache?.key===key?S.sceneEnvCache.list:null;
+  if(!base){
+    const out=[];
+    for(const o of S.environment){
+      const d=haversineM(pos,o);if(d<4||d>265)continue;const a=signedAngle(heading,bearing(pos,o)),forward=Math.cos(rad(a))*d,side=Math.sin(rad(a))*d;
+      if(forward<4||forward>265||Math.abs(side)>135)continue;out.push({...o,distance:d,forward,side})
+    }
+    base=out.sort((a,b)=>b.forward-a.forward).slice(0,100);S.sceneEnvCache={key,list:base}
+  }
+  return maxM>=260?base:base.filter(o=>o.distance<=maxM&&o.forward<=maxM)
+}
 function openStreetReference(){if(!S.gps){setStatus("Active le GPS avant d’ouvrir la vue 360°.");return}const rb=S.lastMatch?(travelDirection(S.lastMatch,S.gps)==="forward"?S.lastMatch.roadBearing:(S.lastMatch.roadBearing+180)%360):0,heading=Math.round(S.gps.speedMps>1.5&&Number.isFinite(S.heading)?S.heading:rb),url=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(S.gps.lat+","+S.gps.lon)}&heading=${heading}&pitch=0&fov=85`;window.open(url,"_blank","noopener")}
 function initMap(){
   S.map=L.map("map",{zoomControl:false,preferCanvas:true,inertia:true}).setView([PILOT.lat,PILOT.lon],15);
@@ -984,7 +997,7 @@ function drawEnvironment(c,w,h,hz,heading){
       const hh=clamp(5*p.ppm,8,34);c.strokeStyle="#767f84";c.lineWidth=2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-hh);c.stroke();
       c.fillStyle="#d9e0e3";c.fillRect(p.x-5,p.y-hh-7,10,7)
     }else if(o.kind==="building"){
-      if(o.geometry&&drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day))continue;
+      if(o.geometry&&o.forward<175&&drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day))continue;
       const footprint=o.footprint||10,bw=clamp(footprint*p.ppm*.72,7,135),bh=clamp(o.height*p.ppm*1.25,9,h*.46);
       c.fillStyle=osmFacadeColor(o.tags,day);c.fillRect(p.x-bw/2,p.y-bh,bw,bh);
       c.fillStyle=day?"#667278":"#26343b";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.34,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw*.46,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw/2,p.y-bh);c.fill();
