@@ -16,14 +16,42 @@ function turnHudGlyph(turn){
   return turn==="left"?"↰":turn==="right"?"↱":turn==="uturn"?"↶":turn==="roundabout"?"⟳":"↑"
 }
 function updateFusionBadge(pos=S.gps,m=effectiveMatch()){
-  const f=S.fusion,gps=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)}m`:"—",match=m?`M${m.quality??0}`:"M—",vision=S.visionCue?.stable?` · V${S.visionCue.confidence}`:"";
-  $("fusionBadge").textContent=`${f.mode} ${Math.round(f.quality||0)} · GPS ${gps} · ${match}${vision}`
+  const f=S.fusion,h=S.sensorHealth,gps=pos?`±${Math.round(S.rawGps?.accuracy??pos.accuracy??0)}m`:"—",match=m?`M${m.quality??0}`:"M—",vision=S.visionCue?.stable?` · V${S.visionCue.confidence}`:"";
+  $("fusionBadge").textContent=`${f.mode} ${Math.round(f.quality||0)} · SENS ${h.overall||0} · GPS ${gps} · ${match}${vision}`
 }
 function updateBeliefHud(lane=S.lastLane){
   const box=$("beliefHud");if(!box)return;box.replaceChildren();
   const probs=lane?.belief;if(!lane?.total||!Array.isArray(probs)||!probs.length){box.classList.add("hidden");return}
   box.classList.remove("hidden");let best=1,max=-1;probs.forEach((p,i)=>{if(p>max){max=p;best=i+1}});
   probs.forEach((p,i)=>{const n=i+1,el=document.createElement("div");el.className="belief-lane"+(n===lane.index?" best current":n===best?" candidate":"");const a=document.createElement("strong"),b=document.createElement("span");a.textContent=`V${n}`;b.textContent=`${Math.round(p*100)}%`;el.append(a,b);box.appendChild(el)})
+}
+function upcomingManeuvers(along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,limit=3){
+  if(!Number.isFinite(along))return[];
+  const out=[];
+  for(const m of S.routeManeuvers){
+    if(m.type==="depart"||m.type==="arrive")continue;
+    const distance=m.along-along;if(distance<-12)continue;if(distance>1500)break;
+    out.push({...m,distance:Math.max(0,distance),turn:maneuverTurn(m),instruction:maneuverInstruction(m,maneuverTurn(m))});if(out.length>=limit)break
+  }
+  return out
+}
+function updateHorizonHud(nav=S.lastNav,lane=S.lastLane){
+  const panel=$("horizonHud");if(!panel)return;
+  if(!S.routeCoords.length){panel.classList.add("hidden");$("horizonItems").replaceChildren();return}
+  const along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,items=upcomingManeuvers(along,3),hint=upcomingRouteLaneHint(along,1000);
+  panel.classList.remove("hidden");$("horizonQuality").textContent=`ROUTE Q${Math.round(S.routeFilter.quality||0)} · AMB ${Math.round((S.routeFilter.ambiguity||0)*100)}%`;
+  const box=$("horizonItems");box.replaceChildren();
+  items.forEach((m,i)=>{
+    const el=document.createElement("div");el.className="horizon-item"+(i===0?" primary":"");
+    const icon=document.createElement("strong"),dist=document.createElement("span"),name=document.createElement("em");
+    icon.textContent=turnHudGlyph(m.turn);dist.textContent=m.distance>=1000?`${(m.distance/1000).toFixed(1)} km`:`${Math.round(m.distance)} m`;name.textContent=(m.step.name||m.instruction).slice(0,22);
+    el.append(icon,dist,name);box.appendChild(el)
+  });
+  if(hint){
+    const el=document.createElement("div");el.className="horizon-item lanes";const title=document.createElement("span"),row=document.createElement("div");title.textContent=`VOIES · ${Math.round(hint.distance)} m`;row.className="horizon-lanes";
+    for(const l of hint.lanes){const x=document.createElement("i");x.textContent=turnGlyph((l.indications||[]).join(";"));if(l.valid)x.classList.add("ok");row.appendChild(x)}
+    el.append(title,row);box.appendChild(el)
+  }
 }
 function updateManeuverHud(nav){
   const after=$("maneuverAfter");
@@ -767,7 +795,7 @@ function updateUi(pos){
     const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null;S.lastNav=nav;
     $("road").textContent="—";$("lane").textContent=S.lastLane?.index?`${S.lastLane.index}/${S.lastLane.total}`:"—";$("confidence").textContent=S.lastLane?`${Math.max(0,S.lastLane.confidence-15)}%`:"—";
     $("advice").textContent=S.fusion.mode==="PRÉDICTIF"?"Position prédite · voie non confirmée":"Route à confirmer";$("source").textContent=S.fusion.mode;
-    updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateManeuverHud(nav);updateFusionBadge(navPos,null);updateBeliefHud(S.lastLane);updateDiagnostics(navPos,null,S.lastLane,nav);
+    updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateManeuverHud(nav);updateFusionBadge(navPos,null);updateBeliefHud(S.lastLane);updateHorizonHud(nav,S.lastLane);updateDiagnostics(navPos,null,S.lastLane,nav);
     draw3D(currentDrawState());return
   }
   if(!observed&&m){
@@ -776,12 +804,12 @@ function updateUi(pos){
     if(S.lastLane)S.lastLane={...S.lastLane,confidence:Math.max(0,S.lastLane.confidence-6),reason:"Voie maintenue par mémoire courte"};
     $("road").textContent=roadName(m.road);$("lane").textContent=S.lastLane?.index?`${S.lastLane.index}/${S.lastLane.total}`:"—";$("confidence").textContent=S.lastLane?`${S.lastLane.confidence}%`:"—";$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";
     $("source").textContent="PRÉDICTIF";$("advice").textContent="Position et voie maintenues temporairement · attente GPS";
-    updateSpeedLimit(m,pos);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(S.lastLane);updateDiagnostics(navPos,m,S.lastLane,nav);draw3D(currentDrawState());return
+    updateSpeedLimit(m,pos);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(S.lastLane);updateHorizonHud(nav,S.lastLane);updateDiagnostics(navPos,m,S.lastLane,nav);draw3D(currentDrawState());return
   }
   const rawLane=fuseLaneWithVision(estimateLane(m,pos)),lane=stabilizeLane(updateLaneBelief(rawLane,m),m);S.lastLane=lane;
   updateFusionState(pos,observed||m,lane,null);
   const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null,sig=relevantSignal(navPos,m);S.lastNav=nav;S.lastSignal=sig;
-  updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(lane);voiceCue(nav);
+  updateSpeedLimit(m,pos);updateJunctionAssist(lane,nav);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(lane);updateHorizonHud(nav,lane);voiceCue(nav);
   $("road").textContent=roadName(m.road);$("lane").textContent=lane.index?`${lane.index}/${lane.total}`:(lane.total?`?/${lane.total}`:"—");$("confidence").textContent=`${lane.confidence}%`;$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";
   $("source").textContent=S.fusion.mode==="PRÉDICTIF"?"PRÉDICTIF":lane.index?(lane.visionAssist&&S.visionCue?.stable?"FUSION + VISION":"FUSION"):"PAS ASSEZ PRÉCIS";
   if(nav){
@@ -859,7 +887,7 @@ function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav
   $("diagHeading").textContent=pos?`${Math.round(pos.heading||0)}°`:"—";
   $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
   $("diagRoute").textContent=nav&&Number.isFinite(nav.offRoute)?`${nav.offRoute.toFixed(1)} m écart`:(S.route?"sur route":"—");
-  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);renderTruthButtons(lane);
+  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";renderTruthButtons(lane);
 }
 function recordSample(){
   if(!S.recording||!S.gps)return;
@@ -1116,7 +1144,7 @@ function currentDrawState(){
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);
   if(!S.demo&&now-S.lastHudAt>280){
-    S.lastHudAt=now;const fp=fusionPosition();updateFusionBadge(fp,effectiveMatch());updateBeliefHud(S.lastLane);
+    S.lastHudAt=now;const fp=fusionPosition();updateFusionBadge(fp,effectiveMatch());updateBeliefHud(S.lastLane);updateHorizonHud(S.lastNav,S.lastLane);
     if(S.view==="map"&&S.gps&&["PRÉDICTIF","GPS PERDU"].includes(S.fusion.mode))updateUserMarker(S.gps);
     if(S.fusion.mode==="PRÉDICTIF"||S.fusion.mode==="GPS PERDU")$("source").textContent=S.fusion.mode;
     if(S.lastLane)$("confidence").textContent=`${Math.round(S.lastLane.confidence||0)}%`
