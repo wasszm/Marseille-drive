@@ -1,27 +1,27 @@
 <!doctype html>
-<html lang="fr">
-<head>
+<html lang="fr"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#090d10">
+<meta name="theme-color" content="#070b0e">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="./manifest.webmanifest">
-<link rel="apple-touch-icon" href="./icon.svg">
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.css">
-<link rel="stylesheet" href="./styles.css">
-<title>Marseille Drive</title>
-</head>
-<body>
-<div id="map"></div>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest?v=2">
+<link rel="apple-touch-icon" href="./icon.svg?v=2">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="./styles.css?v=2.0.0">
+<title>Marseille Drive — Beta 2</title></head><body>
+<div id="mapView" class="view"><div id="map"></div></div>
+<div id="driveView" class="view hidden"><canvas id="driveCanvas"></canvas></div>
+<div id="vehicle"></div>
 <div class="hud">
-<section class="card top"><div><div class="brand">MARSEILLE DRIVE</div><div class="muted">BETA 1 · PILOTE MARSEILLE 10e</div></div><div class="speed"><span id="speed">--</span> <small>km/h</small></div></section>
-<section class="card stats"><div><b id="lane">—</b><small>VOIE</small></div><div><b id="conf">—</b><small>CONFIANCE</small></div><div><b id="road">—</b><small>ROUTE</small></div><div><b id="signal">—</b><small>FEU</small></div></section>
-<div class="buttons"><button id="follow" class="card">🎯 Suivre</button><button id="compass" class="card">🧭 Cap</button><button id="camera" class="card">📷 Vision</button><button id="demo" class="card">▶ Démo</button></div>
-<div id="search" class="card search"><div class="muted">DESTINATION</div><div class="muted">Tape la carte pour choisir une destination, puis l'itinéraire sera calculé.</div><button id="closeRoute">Fermer</button></div>
-<div id="cameraPanel" class="card camera" hidden><video id="video" autoplay playsinline muted></video><div class="muted">Caméra locale. Détection automatique à venir.</div></div>
-<section class="card bottom"><div class="muted">NAVIGATION</div><div id="instruction" class="instruction">Initialisation…</div><div id="detail" class="muted">Chargement du pilote Marseille 10e.</div><div id="advice" class="advice">Voie en attente</div></section>
+<section class="glass topbar"><div><div class="brand">MARSEILLE DRIVE</div><div id="modeLabel" class="muted">BETA 2 · CARTE</div></div><div class="speedbox"><span id="speed">0</span><small> km/h</small></div></section>
+<section class="glass metrics"><div><b id="lane">—</b><span>VOIE</span></div><div><b id="confidence">—</b><span>CONFIANCE</span></div><div><b id="road">—</b><span>ROUTE</span></div><div><b id="signal">—</b><span>FEU</span></div></section>
+<div class="toolbar"><button id="mapBtn" class="glass tool active">🗺️ Carte</button><button id="driveBtn" class="glass tool">🛣️ 3D</button><button id="gpsBtn" class="glass tool">📍 GPS</button><button id="demoBtn" class="glass tool">▶ Démo</button></div>
+<div id="statusChip" class="glass status-chip">Initialisation…</div>
+<section class="glass route-panel"><div class="route-row"><div><div class="eyebrow">DESTINATION</div><div id="destinationText" class="route-title">Touchez la carte pour choisir</div></div><button id="clearRouteBtn" class="mini-btn" hidden>✕</button></div><div id="routeMeta" class="muted">GPS requis pour calculer un itinéraire.</div></section>
+<section class="glass nav-card"><div class="eyebrow">NAVIGATION</div><div id="instruction" class="instruction">Prêt pour le test</div><div id="detail" class="detail">Active le GPS ou lance la démonstration.</div><div class="lane-row"><div id="laneAdvice" class="lane-advice">Voie : en attente</div><div id="sourceBadge" class="source-badge">SOURCE —</div></div></section>
 </div>
-<div id="car"></div>
-</body>
-<script type="module" src="./app.js"></script>
-</html>
+<div id="permissionPanel" class="sheet glass"><div class="sheet-title">Test sur iPhone</div><div class="sheet-text">Active le GPS pour tester ta position réelle. Si tu es hors Marseille, l'application chargera les routes autour de toi pour le test.</div><div class="sheet-actions"><button id="allowGpsBtn" class="primary">Activer le GPS</button><button id="skipGpsBtn">Plus tard</button></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./app.js?v=2.0.0"></script>
+</body></html>
