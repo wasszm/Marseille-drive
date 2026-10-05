@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeLengthM:0,routeManeuvers:[],view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,compassHeading:null,compassActive:false,lastMatch:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
+const S={map:null,roads:[],signals:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeLengthM:0,routeManeuvers:[],view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,compassHeading:null,compassActive:false,lastMatch:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function setStatus(t){$("status").textContent=t}
 function roadName(r){const m={motorway:"Autoroute",trunk:"Voie rapide",primary:"Axe principal",secondary:"Route secondaire",tertiary:"Route tertiaire",residential:"Rue résidentielle",service:"Voie de service",unclassified:"Route",living_street:"Zone de rencontre"};return r?.tags?.name||r?.tags?.ref||m[r?.tags?.highway]||"Route sans nom"}
@@ -52,7 +52,21 @@ function environmentObject(e){
   if(geom.length){let max=0;for(const p of geom)max=Math.max(max,haversineM(loc,p));footprint=clamp(max*1.7,5,55)}
   return{id:String(e.id),kind,lat:loc.lat,lon:loc.lon,height:envHeight(tags),footprint,name:tags.name||tags.brand||tags.shop||tags.amenity||"",tags}
 }
-async function loadEnvironmentData(lat,lon){S.environmentCenter={lat,lon};const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["amenity"](${b});node["shop"](${b}););out geom tags;`;try{const data=await fetchOverpass(q),objects=[];for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}objects.sort((a,b)=>haversineM({lat,lon},a)-haversineM({lat,lon},b));S.environment=objects.slice(0,650);S.environmentCenter={lat,lon};try{localStorage.setItem("mdEnvCacheV1",JSON.stringify({lat,lon,time:Date.now(),objects:S.environment}))}catch(_){}if($("envBadge"))$("envBadge").textContent=`URBAIN ${S.environment.length}`}catch(e){let used=false;try{const cache=JSON.parse(localStorage.getItem("mdEnvCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<2500){S.environment=cache.objects||[];S.environmentCenter={lat:cache.lat,lon:cache.lon};used=true}}catch(_){}if($("envBadge"))$("envBadge").textContent=used?`CACHE ${S.environment.length}`:"URBAIN —"}}
+async function loadEnvironmentData(lat,lon){
+  if(S.environmentLoading)return;S.environmentLoading=true;S.environmentCenter={lat,lon};
+  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["amenity"](${b});node["shop"](${b}););out geom tags;`;
+  try{
+    const data=await fetchOverpass(q),objects=[];
+    for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}
+    objects.sort((a,b)=>haversineM({lat,lon},a)-haversineM({lat,lon},b));S.environment=objects.slice(0,650);
+    try{localStorage.setItem("mdEnvCacheV1",JSON.stringify({lat,lon,time:Date.now(),objects:S.environment}))}catch(_){}
+    if($("envBadge"))$("envBadge").textContent=`URBAIN ${S.environment.length}`
+  }catch(e){
+    let used=false;
+    try{const cache=JSON.parse(localStorage.getItem("mdEnvCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<2500){S.environment=cache.objects||[];S.environmentCenter={lat:cache.lat,lon:cache.lon};used=true}}catch(_){}
+    if($("envBadge"))$("envBadge").textContent=used?`CACHE ${S.environment.length}`:"URBAIN —"
+  }finally{S.environmentLoading=false}
+}
 function signedAngle(from,to){return((to-from+540)%360)-180}
 function visibleEnvironment(pos,heading,maxM=260){if(!pos||!S.environment.length)return[];const out=[];for(const o of S.environment){const d=haversineM(pos,o);if(d<5||d>maxM)continue;const a=signedAngle(heading,bearing(pos,o)),forward=Math.cos(rad(a))*d,side=Math.sin(rad(a))*d;if(forward<5||forward>maxM||Math.abs(side)>130)continue;out.push({...o,distance:d,forward,side})}return out.sort((a,b)=>b.forward-a.forward).slice(0,90)}
 function openStreetReference(){if(!S.gps){setStatus("Active le GPS avant d’ouvrir la vue 360°.");return}const rb=S.lastMatch?(travelDirection(S.lastMatch,S.gps)==="forward"?S.lastMatch.roadBearing:(S.lastMatch.roadBearing+180)%360):0,heading=Math.round(S.gps.speedMps>1.5&&Number.isFinite(S.heading)?S.heading:rb),url=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(S.gps.lat+","+S.gps.lon)}&heading=${heading}&pitch=0&fov=85`;window.open(url,"_blank","noopener")}
@@ -60,10 +74,27 @@ function initMap(){
   S.map=L.map("map",{zoomControl:false,preferCanvas:true,inertia:true}).setView([PILOT.lat,PILOT.lon],15);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors",crossOrigin:true}).addTo(S.map);
   S.map.on("click",e=>{if(!S.gps){setStatus("Active le GPS avant de choisir une destination.");return}setDestination(e.latlng.lat,e.latlng.lng)});
-  S.map.on("dragstart zoomstart",()=>{S.followMap=false;document.body.classList.add("map-free")})
+  S.map.on("dragstart",()=>{S.followMap=false;document.body.classList.add("map-free")})
 }
 async function fetchOverpass(q){let last;for(const ep of CFG.overpass){const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),13000);try{const r=await fetch(ep,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:"data="+encodeURIComponent(q),signal:ctrl.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);return await r.json()}catch(e){last=e}finally{clearTimeout(timer)}}throw last||Error("Overpass indisponible")}
-async function loadRoadData(lat,lon){setStatus("Chargement des routes autour de toi…");const b=bbox(lat,lon,CFG.queryRadiusKm),q=`[out:json][timeout:30];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b}););out geom tags;`;try{const data=await fetchOverpass(q),roads=[],signals=[];for(const e of data.elements||[]){if(e.type==="way"&&e.tags?.highway&&e.geometry?.length>1)roads.push({id:String(e.id),tags:e.tags,coords:e.geometry.map(p=>({lat:p.lat,lon:p.lon}))});else if(e.type==="node"&&e.tags?.highway==="traffic_signals")signals.push({id:String(e.id),lat:e.lat,lon:e.lon,tags:e.tags})}S.roads=roads;S.signals=signals;S.areaCenter={lat,lon};try{localStorage.setItem("mdRoadCacheV1",JSON.stringify({lat,lon,time:Date.now(),roads,signals}))}catch(_){}loadEnvironmentData(lat,lon);setStatus(`${roads.length} routes · ${signals.length} feux cartographiés`)}catch(e){let used=false;try{const cache=JSON.parse(localStorage.getItem("mdRoadCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<3000){S.roads=cache.roads||[];S.signals=cache.signals||[];S.areaCenter={lat:cache.lat,lon:cache.lon};used=true;setStatus(`Mode cache local · ${S.roads.length} routes`)}}catch(_){}if(!used)setStatus("Données OSM indisponibles — GPS toujours actif")}}
+async function loadRoadData(lat,lon){
+  if(S.roadLoading)return;S.roadLoading=true;setStatus("Chargement des routes autour de toi…");
+  const b=bbox(lat,lon,CFG.queryRadiusKm),q=`[out:json][timeout:30];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b}););out geom tags;`;
+  try{
+    const data=await fetchOverpass(q),roads=[],signals=[];
+    for(const e of data.elements||[]){
+      if(e.type==="way"&&e.tags?.highway&&e.geometry?.length>1)roads.push({id:String(e.id),tags:e.tags,coords:e.geometry.map(p=>({lat:p.lat,lon:p.lon}))});
+      else if(e.type==="node"&&e.tags?.highway==="traffic_signals")signals.push({id:String(e.id),lat:e.lat,lon:e.lon,tags:e.tags})
+    }
+    S.roads=roads;S.signals=signals;S.areaCenter={lat,lon};
+    try{localStorage.setItem("mdRoadCacheV1",JSON.stringify({lat,lon,time:Date.now(),roads,signals}))}catch(_){}
+    loadEnvironmentData(lat,lon);setStatus(`${roads.length} routes · ${signals.length} feux cartographiés`)
+  }catch(e){
+    let used=false;
+    try{const cache=JSON.parse(localStorage.getItem("mdRoadCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<3000){S.roads=cache.roads||[];S.signals=cache.signals||[];S.areaCenter={lat:cache.lat,lon:cache.lon};used=true;setStatus(`Mode cache local · ${S.roads.length} routes`)}}catch(_){}
+    if(!used)setStatus("Données OSM indisponibles — GPS toujours actif")
+  }finally{S.roadLoading=false}
+}
 function nearestRoad(pos){let best=null;for(const road of S.roads){for(let i=0;i<road.coords.length-1;i++){const a=road.coords[i],b=road.coords[i+1],s=pointToSegment(pos,a,b);if(s.distance>CFG.maxRoadDistanceM)continue;const rb=bearing(a,b),pen=pos.speedMps>2&&Number.isFinite(pos.heading)?angleDiff(pos.heading,rb)/15:0,score=s.distance+pen;if(!best||score<best.score)best={road,distance:s.distance,nearest:s.nearest,roadBearing:rb,segmentIndex:i,segmentT:s.t,score}}}return best}
 function travelDirection(m,pos){
   const oneway=String(m.road.tags.oneway||"").toLowerCase();
@@ -174,7 +205,7 @@ async function calculateRoute(lat,lon,isReroute=false){
     if(!r.ok)throw Error(`HTTP ${r.status}`);const d=await r.json();if(d.code!=="Ok"||!d.routes?.length)throw Error("Aucun itinéraire");
     S.route=d.routes[0];S.routeCoords=S.route.geometry.coordinates.map(c=>({lat:c[1],lon:c[0]}));S.routeLengthM=S.route.distance;buildRouteManeuvers();S.arrived=false;S.lastVoiceKey="";
     if(S.routeLayer)S.map.removeLayer(S.routeLayer);S.routeLayer=L.polyline(S.routeCoords.map(p=>[p.lat,p.lon]),{color:"#fff",weight:7,opacity:.93,className:"route-line"}).addTo(S.map);
-    if(!isReroute)S.map.fitBounds(S.routeLayer.getBounds(),{padding:[45,45]});
+    if(!isReroute){S.followMap=false;document.body.classList.add("map-free");S.map.fitBounds(S.routeLayer.getBounds(),{padding:[45,45]})};
     $("routeMeta").textContent=`${(S.route.distance/1000).toFixed(1)} km · ~${Math.max(1,Math.round(S.route.duration/60))} min`;$("progressWrap").classList.remove("hidden");
     setStatus(isReroute?"Nouvel itinéraire chargé":"Itinéraire chargé · passe en 3D quand tu veux");updateUi(S.gps)
   }catch(e){setStatus(e?.name==="AbortError"?"Calcul d’itinéraire trop long · réessaie.":"Itinéraire indisponible : "+e.message)}
@@ -333,7 +364,7 @@ function roadSurfaceColor(){
 function cycleLaneSides(){
   const t=S.lastMatch?.road?.tags||{},generic=String(t.cycleway||"").toLowerCase(),left=String(t["cycleway:left"]||"").toLowerCase(),right=String(t["cycleway:right"]||"").toLowerCase();
   const yes=v=>/lane|track|shared_lane/.test(v);
-  return{left:yes(left)||(!left&&!right&&yes(generic)),right:yes(right)||(!left&&!right&&yes(generic))}
+  return{left:yes(left),right:yes(right)||(!left&&!right&&yes(generic))}
 }
 function sceneHeading(){
   if(S.demo)return 0;
