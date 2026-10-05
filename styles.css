@@ -126,3 +126,18 @@ body.drive-mode .belief-hud.hidden{display:none}
 .replay-score.hidden{display:none}
 
 .belief-hud .belief-lane.candidate{opacity:.82;outline:1px dashed rgba(255,255,255,.35)}
+
+/* BETA 10 — route horizon */
+.horizon-hud{display:none;position:absolute;left:12px;right:12px;top:292px;padding:7px 9px;border-radius:12px;background:rgba(7,12,16,.74);border:1px solid rgba(255,255,255,.07);pointer-events:none}
+.horizon-head{display:flex;justify-content:space-between;align-items:center;font-size:7px;letter-spacing:.75px;opacity:.72}.horizon-head b{font-size:8px;letter-spacing:.2px}
+.horizon-items{display:flex;gap:6px;margin-top:5px;overflow:hidden}
+.horizon-item{min-width:73px;padding:6px 7px;border-radius:9px;background:#11191e;font-size:8px;line-height:1.15}
+.horizon-item strong{display:block;font-size:14px;line-height:1}.horizon-item span{display:block;margin-top:3px;opacity:.68;white-space:nowrap}.horizon-item em{display:block;margin-top:2px;font-style:normal;font-size:6px;opacity:.48}
+.horizon-item.primary{background:#fff;color:#111}.horizon-item.lanes{min-width:90px}
+.horizon-lanes{display:flex;gap:2px;margin-top:4px}.horizon-lanes i{font-style:normal;width:15px;text-align:center;padding:3px 1px;border-radius:4px;background:#ffffff10}.horizon-item.primary .horizon-lanes i{background:#00000010}.horizon-lanes i.ok{background:rgba(67,221,132,.3)}
+body.drive-mode .horizon-hud{display:block}
+body.drive-mode .horizon-hud.hidden{display:none}
+body.drive-mode .belief-hud{top:250px}
+body.drive-mode .horizon-hud{top:292px}
+@media(max-height:720px){body.drive-mode .horizon-hud{display:none!important}}
+.junction-lanes .restricted{opacity:.28;text-decoration:line-through}
