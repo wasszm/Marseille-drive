@@ -79,7 +79,10 @@ function environmentObject(e){
   const tags=e.tags||{},kind=envKind(tags);
   let footprint=10;
   if(geom.length){let max=0;for(const p of geom)max=Math.max(max,haversineM(loc,p));footprint=clamp(max*1.7,5,55)}
-  return{id:String(e.id),kind,lat:loc.lat,lon:loc.lon,height:envHeight(tags),footprint,name:tags.name||tags.brand||tags.shop||tags.amenity||"",tags}
+  const keepGeom=["building","green","water"].includes(kind)&&geom.length>=3;
+  let shape=keepGeom?geom:null;
+  if(shape&&shape.length>22){const step=Math.ceil(shape.length/20);shape=shape.filter((_,i)=>i%step===0);if(shape.length<3)shape=geom.slice(0,20)}
+  return{id:String(e.id),kind,lat:loc.lat,lon:loc.lon,height:envHeight(tags),footprint,geometry:shape,name:tags.name||tags.brand||tags.shop||tags.amenity||"",tags}
 }
 async function loadEnvironmentData(lat,lon){
   if(S.environmentLoading)return;S.environmentLoading=true;S.environmentCenter={lat,lon};
@@ -842,6 +845,38 @@ function drawFallbackCity(c,w,h,hz){
   for(let i=0;i<6;i++){const side=i<3?-1:1,k=i%3,x=w/2+side*(w*.18+k*w*.11),y=hz+28+k*18;c.strokeStyle="#68747a";c.lineWidth=2;c.beginPath();c.moveTo(x,y);c.lineTo(x,y-28-k*3);c.stroke();c.fillStyle="#dbe2c1";c.beginPath();c.arc(x,y-30-k*3,3,0,Math.PI*2);c.fill()}
   for(let i=0;i<4;i++){const side=i<2?-1:1,k=i%2,x=w/2+side*(w*.27+k*w*.13),y=hz+55+k*35;c.strokeStyle="#314139";c.lineWidth=3;c.beginPath();c.moveTo(x,y);c.lineTo(x,y-20);c.stroke();c.fillStyle="#42604e";c.beginPath();c.arc(x,y-28,10,0,Math.PI*2);c.fill()}
 }
+function osmFacadeColor(tags,day){
+  const raw=String(tags?.["building:colour"]||tags?.["building:color"]||"").trim();
+  if(/^#[0-9a-f]{3,6}$/i.test(raw))return raw;
+  const material=String(tags?.["building:material"]||"").toLowerCase();
+  if(/brick/.test(material))return day?"#a77b69":"#5a4038";
+  if(/stone/.test(material))return day?"#a39d91":"#56524c";
+  if(/glass/.test(material))return day?"#7f9da8":"#38515c";
+  return day?"#899499":"#435058"
+}
+function projectGroundShape(geom,pos,heading,w,h,hz){
+  if(!geom?.length)return null;const out=[];
+  for(const g of geom){
+    const local=geoToLocal(pos,heading,g);if(local.forward<3||local.forward>285||Math.abs(local.side)>180)continue;
+    const p=roadScreenPoint(local,w,h,hz);out.push({...p,local})
+  }
+  return out.length>=3?out:null
+}
+function drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day){
+  const base=projectGroundShape(o.geometry,pos,heading,w,h,hz);if(!base)return false;
+  const top=base.map(p=>({x:p.x,y:p.y-clamp(o.height*p.ppm*.82,5,h*.44),ppm:p.ppm}));
+  const facade=osmFacadeColor(o.tags,day),side=day?"#707c81":"#343e43",roof=day?"#a7b0b2":"#586368";
+  const faces=[];
+  for(let i=0;i<base.length;i++){
+    const j=(i+1)%base.length,a=base[i],b=base[j],ta=top[i],tb=top[j],depth=(a.forward+b.forward)/2;
+    faces.push({depth,pts:[[a.x,a.y],[b.x,b.y],[tb.x,tb.y],[ta.x,ta.y]]})
+  }
+  faces.sort((a,b)=>b.depth-a.depth);
+  faces.forEach((f,i)=>poly(c,f.pts,i%2?side:facade));
+  poly(c,top.map(p=>[p.x,p.y]),roof);
+  if(o.name&&base.some(p=>p.ppm>2.7)){const near=base.reduce((a,b)=>a.forward<b.forward?a:b);c.fillStyle="#fff";c.font="800 8px -apple-system,Arial";c.textAlign="center";c.fillText(o.name.slice(0,16),near.x,near.y-clamp(o.height*near.ppm*.82,5,h*.44)-4)}
+  return true
+}
 function drawEnvironment(c,w,h,hz,heading){
   const day=isDayScene(),pos=S.demo?null:scenePosition();if(!pos||!S.environment.length){drawFallbackCity(c,w,h,hz);return}
   const objs=visibleEnvironment(pos,heading);let labels=0;
@@ -856,8 +891,9 @@ function drawEnvironment(c,w,h,hz,heading){
       const hh=clamp(5*p.ppm,8,34);c.strokeStyle="#767f84";c.lineWidth=2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-hh);c.stroke();
       c.fillStyle="#d9e0e3";c.fillRect(p.x-5,p.y-hh-7,10,7)
     }else if(o.kind==="building"){
+      if(o.geometry&&drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day))continue;
       const footprint=o.footprint||10,bw=clamp(footprint*p.ppm*.72,7,135),bh=clamp(o.height*p.ppm*1.25,9,h*.46);
-      c.fillStyle=day?(o.forward<70?"#8b969a":"#78858a"):(o.forward<70?"#46545c":"#35434b");c.fillRect(p.x-bw/2,p.y-bh,bw,bh);
+      c.fillStyle=osmFacadeColor(o.tags,day);c.fillRect(p.x-bw/2,p.y-bh,bw,bh);
       c.fillStyle=day?"#667278":"#26343b";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.34,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw*.46,p.y-bh-5*p.ppm/3);c.lineTo(p.x+bw/2,p.y-bh);c.fill();
       if(p.ppm>2.1&&bw>18){c.fillStyle=day?"#d1d7d5":"#94a6ad";const rows=Math.min(6,Math.max(1,Math.round(o.height/5)));for(let r=0;r<rows;r++)for(let col=0;col<Math.min(4,Math.max(2,Math.round(bw/30)));col++){const cols=Math.min(4,Math.max(2,Math.round(bw/30))),ww=Math.max(2,bw*.07),wh=Math.max(2,bh*.035),wx=p.x-bw*.35+col*(bw*.7/Math.max(1,cols-1)),wy=p.y-bh+bh*(r+1)/(rows+1);c.fillRect(wx,wy,ww,wh)}}
     }else if(o.kind==="tree"){
