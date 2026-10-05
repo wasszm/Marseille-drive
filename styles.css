@@ -118,3 +118,5 @@ body.drive-mode .belief-hud{display:flex}
 .user-dot.predictive{box-shadow:0 0 0 7px rgba(255,190,72,.16),0 0 16px rgba(255,190,72,.6)}
 body.drive-mode .fusion-badge{max-width:45vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.drive-mode .belief-hud.hidden{display:none}
+
+.maneuver-after{font-size:7px!important;opacity:.78!important;margin-top:3px!important;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.maneuver-after.hidden{display:none}
