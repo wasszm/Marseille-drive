@@ -727,15 +727,17 @@ function toggleRecording(){
   setStatus("Trace terrain locale démarrée")
 }
 function calibrationSummary(){
-  const comparable=S.truthEvents.filter(e=>Number.isFinite(e.predicted)),correct=comparable.filter(e=>e.predicted===e.lane);
-  const avg=a=>a.length?+(a.reduce((s,x)=>s+x,0)/a.length).toFixed(2):null;
+  const total=S.truthEvents.length,comparable=S.truthEvents.filter(e=>Number.isFinite(e.predicted)),correct=comparable.filter(e=>e.predicted===e.lane);
+  const avg=a=>a.length?+(a.reduce((sum,x)=>sum+x,0)/a.length).toFixed(2):null,confusion={};
+  for(const e of S.truthEvents){const key=`${e.lane}->${Number.isFinite(e.predicted)?e.predicted:"?"}`;confusion[key]=(confusion[key]||0)+1}
   return{
-    truthCount:S.truthEvents.length,
-    comparable:comparable.length,
-    correct:correct.length,
+    truthCount:total,comparable:comparable.length,correct:correct.length,
+    coveragePct:total?+(comparable.length/total*100).toFixed(1):null,
     laneAccuracyPct:comparable.length?+(correct.length/comparable.length*100).toFixed(1):null,
+    overallCorrectPct:total?+(correct.length/total*100).toFixed(1):null,
     avgGpsAccuracyM:avg(comparable.map(e=>Number(e.gpsAccuracy)).filter(Number.isFinite)),
-    avgMatchQuality:avg(comparable.map(e=>Number(e.matchQuality)).filter(Number.isFinite))
+    avgMatchQuality:avg(comparable.map(e=>Number(e.matchQuality)).filter(Number.isFinite)),
+    confusion
   }
 }
 function exportTrack(){
@@ -774,15 +776,15 @@ function replayPointAt(index){
     const predicted=S.lastLane?.index??null,correct=Number.isFinite(predicted)&&predicted===Number(truth.lane);
     S.replayResults.push({index,t:p.t||null,truth:Number(truth.lane),predicted,correct});
   }
-  const compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,score=$("replayScore");
-  score.textContent=`Replay ${index+1}/${S.replayPoints.length} · vérité ${correct}/${compared.length||0}`;score.classList.remove("hidden")
+  const total=S.replayResults.length,compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,score=$("replayScore");
+  score.textContent=`Replay ${index+1}/${S.replayPoints.length} · ${correct}/${total} correct · couverture ${total?Math.round(compared.length/total*100):0}%`;score.classList.remove("hidden")
 }
 function stopReplay(done=false){
   clearInterval(S.replayTimer);S.replayTimer=null;
   if(!S.replayActive&&!done)return;S.replayActive=false;
   $("stopReplayBtn").classList.add("hidden");$("replayBtn").classList.remove("hidden");
-  const compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,pct=compared.length?Math.round(correct/compared.length*100):null;
-  $("replayScore").textContent=done?`Replay terminé · ${compared.length} contrôles · ${pct===null?"—":pct+"%"} corrects`:"Replay arrêté";
+  const total=S.replayResults.length,compared=S.replayResults.filter(x=>Number.isFinite(x.predicted)),correct=compared.filter(x=>x.correct).length,accuracy=compared.length?Math.round(correct/compared.length*100):null,coverage=total?Math.round(compared.length/total*100):null;
+  $("replayScore").textContent=done?`Replay terminé · précision ${accuracy===null?"—":accuracy+"%"} · couverture ${coverage===null?"—":coverage+"%"} · global ${total?Math.round(correct/total*100)+"%":"—"}`:"Replay arrêté";
   setStatus(done?"Replay terminé":"Replay arrêté")
 }
 async function loadReplayFile(ev){
