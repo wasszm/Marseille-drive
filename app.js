@@ -680,7 +680,7 @@ function routeObservationCandidates(pos,predictedAlong=null,maxCandidates=8){
         if(delta<-22)score+=Math.min(160,Math.abs(delta+22)*1.25);
         if(delta>Math.max(120,(pos.speedMps||0)*9+70))score+=Math.min(120,(delta-80)*.24)
       }
-      out.push({distance:p.distance,index:i,t:p.t,along,nearest:p.nearest,roadBearing:rb,headingError,score})
+      out.push({distance:p.distance,index:i,t:p.t,along,nearest:p.nearest,roadBearing:rb,headingError:headingErr,score})
     }
   };
   scan(start,end);
