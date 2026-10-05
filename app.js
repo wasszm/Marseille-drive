@@ -6,7 +6,7 @@ const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGp
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
-laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
+laneFilter:{roadId:null,index:null,candidate:null,hits:0},scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.29,targetHorizon:.29,rangeM:300,lastAdjustAt:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function appNow(){return S.replayActive&&Number.isFinite(S.replayClock)?S.replayClock:Date.now()}
 function setStatus(t,ms=3200){
@@ -145,8 +145,16 @@ function envHeight(tags){const h=parseFloat(String(tags?.height||"").replace(","
 function envKind(tags){
   if(tags?.building)return"building";
   if(tags?.natural==="tree")return"tree";
+  if(tags?.barrier==="hedge")return"hedge";
+  if(tags?.barrier==="bollard"||tags?.barrier==="block")return"bollard";
+  if(tags?.barrier)return"barrier";
   if(tags?.highway==="street_lamp")return"lamp";
   if(tags?.highway==="crossing")return"crossing";
+  if(tags?.highway==="stop")return"stop";
+  if(tags?.highway==="give_way")return"give_way";
+  if(tags?.traffic_calming)return"calming";
+  if(tags?.amenity==="bench")return"bench";
+  if(tags?.emergency==="fire_hydrant")return"hydrant";
   if(tags?.highway==="bus_stop"||tags?.public_transport==="platform")return"transit";
   if(tags?.traffic_sign)return"sign";
   if(tags?.natural==="water"||tags?.water)return"water";
@@ -162,14 +170,14 @@ function environmentObject(e){
   const tags=e.tags||{},kind=envKind(tags);
   let footprint=10;
   if(geom.length){let max=0;for(const p of geom)max=Math.max(max,haversineM(loc,p));footprint=clamp(max*1.7,5,55)}
-  const keepGeom=["building","green","water"].includes(kind)&&geom.length>=3;
+  const keepGeom=["building","green","water"].includes(kind)&&geom.length>=3||["hedge","barrier"].includes(kind)&&geom.length>=2;
   let shape=keepGeom?geom:null;
   if(shape&&shape.length>22){const step=Math.ceil(shape.length/20);shape=shape.filter((_,i)=>i%step===0);if(shape.length<3)shape=geom.slice(0,20)}
   return{id:String(e.id),kind,lat:loc.lat,lon:loc.lon,height:envHeight(tags),footprint,geometry:shape,name:tags.name||tags.brand||tags.shop||tags.amenity||"",tags}
 }
 async function loadEnvironmentData(lat,lon){
   if(S.environmentLoading)return;S.environmentLoading=true;S.environmentCenter={lat,lon};
-  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out body geom;`;
+  const b=bbox(lat,lon,.48),q=`[out:json][timeout:25];(way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});way["barrier"~"^(hedge|fence|wall|guard_rail)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="stop"](${b});node["highway"="give_way"](${b});node["traffic_calming"](${b});node["barrier"="bollard"](${b});node["amenity"="bench"](${b});node["emergency"="fire_hydrant"](${b});node["highway"="bus_stop"](${b});node["public_transport"="platform"](${b});node["traffic_sign"](${b});node["amenity"](${b});node["shop"](${b}););out body geom;`;
   try{
     const data=await fetchOverpass(q),objects=[];
     for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}
@@ -193,7 +201,7 @@ function visibleEnvironment(pos,heading,maxM=260){
       const d=haversineM(pos,o);if(d<4||d>265)continue;const a=signedAngle(heading,bearing(pos,o)),forward=Math.cos(rad(a))*d,side=Math.sin(rad(a))*d;
       if(forward<4||forward>265||Math.abs(side)>135)continue;out.push({...o,distance:d,forward,side})
     }
-    base=out.sort((a,b)=>b.forward-a.forward).slice(0,100);S.sceneEnvCache={key,list:base}
+    base=out.sort((a,b)=>b.forward-a.forward).slice(0,S.scene3d?.objectLimit||100);S.sceneEnvCache={key,list:base}
   }
   return maxM>=260?base:base.filter(o=>o.distance<=maxM&&o.forward<=maxM)
 }
@@ -262,7 +270,7 @@ async function prefetchAheadPack(){
   const ahead=clamp((S.gps?.speedMps||0)*24+330,350,650),target=routePointAtAlong(along+ahead);if(!target)return;
   if(P.center&&haversineM(P.center,target)<240){P.lastAt=now;return}
   P.loading=true;P.lastAt=now;
-  const b=bbox(target.lat,target.lon,.32),q=`[out:json][timeout:25];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b});way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="bus_stop"](${b});node["traffic_sign"](${b}););out body geom;`;
+  const b=bbox(target.lat,target.lon,.32),q=`[out:json][timeout:25];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b});way["building"](${b});way["natural"="water"](${b});way["leisure"="park"](${b});way["landuse"~"^(grass|forest|meadow|recreation_ground)$"](${b});node["natural"="tree"](${b});node["highway"="street_lamp"](${b});node["highway"="crossing"](${b});node["highway"="stop"](${b});node["highway"="give_way"](${b});node["traffic_calming"](${b});node["barrier"="bollard"](${b});node["amenity"="bench"](${b});node["highway"="bus_stop"](${b});node["traffic_sign"](${b}););out body geom;`;
   try{
     const data=await fetchOverpass(q),roads=[],signals=[],env=[];
     for(const e of data.elements||[]){
