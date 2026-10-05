@@ -3,7 +3,7 @@
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
 const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
-fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
+fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
 laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
@@ -531,7 +531,7 @@ function updateFusionState(pos,m,lane,nav){
   const f=S.fusion,now=Date.now(),q=gpsQuality(S.rawGps,m),routeProj=S.routeCoords.length?routeFilterProjection(pos):null;
   let lateral=Number.isFinite(lane?.lateralM)?lane.lateralM:0;
   if(!f.position){
-    f.position={lat:pos.lat,lon:pos.lon};f.along=routeProj?.along??null;f.lateralM=lateral;f.heading=pos.heading||0;f.speedMps=pos.speedMps||0;f.quality=q;f.mode="GPS";f.lastGpsAt=now;f.lastPredictAt=now;f.roadId=m?.road?.id||null;return f
+    f.position={lat:pos.lat,lon:pos.lon};f.along=routeProj?.along??null;f.lateralM=lateral;f.heading=pos.heading||0;f.speedMps=pos.speedMps||0;f.accelerationMps2=0;f.quality=q;f.mode="GPS";f.lastGpsAt=now;f.lastPredictAt=now;f.roadId=m?.road?.id||null;return f
   }
   const mapSupport=Boolean(m)||(routeProj&&routeProj.distance<=28);const strong=q>=58&&!S.rawGps?.rejected&&mapSupport;
   if(S.routeCoords.length&&routeProj){
@@ -551,7 +551,7 @@ function updateFusionState(pos,m,lane,nav){
     f.position={lat:f.position.lat+(pos.lat-f.position.lat)*.35,lon:f.position.lon+(pos.lon-f.position.lon)*.35};
     f.heading=lerpAngle(f.heading,pos.heading||f.heading,.18)
   }
-  f.speedMps=f.speedMps*.55+(pos.speedMps||0)*.45;f.quality=Math.round(f.quality*.35+q*.65);f.mode=strong?"FUSION":(f.quality>=35?"PRÉDICTIF":"GPS FAIBLE");f.lastGpsAt=now;f.lastPredictAt=now;f.roadId=m?.road?.id||f.roadId;return f
+  const gpsDt=f.lastGpsAt?clamp((now-f.lastGpsAt)/1000,.2,5):1,measuredAccel=clamp(((pos.speedMps||0)-f.speedMps)/gpsDt,-5,3);f.accelerationMps2=(f.accelerationMps2||0)*.58+measuredAccel*.42;f.speedMps=f.speedMps*.55+(pos.speedMps||0)*.45;f.quality=Math.round(f.quality*.35+q*.65);f.mode=strong?"FUSION":(f.quality>=35?"PRÉDICTIF":"GPS FAIBLE");f.lastGpsAt=now;f.lastPredictAt=now;f.roadId=m?.road?.id||f.roadId;return f
 }
 function advanceFusion(nowMs=Date.now()){
   const f=S.fusion;if(!f.position)return;
@@ -560,6 +560,9 @@ function advanceFusion(nowMs=Date.now()){
   if(dt<=0||age<250)return;
   const predictWindow=age<6500&&f.quality>=28;
   if(!predictWindow){f.mode=age>6500?"GPS PERDU":f.mode;f.quality=Math.max(0,f.quality-dt*2);return}
+  f.speedMps=clamp(f.speedMps+(f.accelerationMps2||0)*dt,0,55);f.accelerationMps2=(f.accelerationMps2||0)*Math.exp(-dt*1.7);
+  if(S.lastSignal&&S.lastSignal.distance<20&&f.speedMps<4&&age>700)f.speedMps*=Math.exp(-dt*1.15);
+  if(f.speedMps<.35)f.speedMps=0;
   const ds=clamp(f.speedMps*dt,0,4);
   if(S.routeCoords.length&&Number.isFinite(f.along)){
     f.along=clamp(f.along+ds,0,S.routeLengthM||Infinity);const rp=fusedRoutePosition(f.along,f.lateralM);if(rp){f.position={lat:rp.lat,lon:rp.lon};f.heading=rp.heading}
@@ -1028,7 +1031,7 @@ function recordSample(){
     lanePlan:plan?{target:plan.target,next:plan.next,compatible:plan.compatible,source:plan.source,strategic:plan.strategic,tight:plan.tight,budget:plan.budget,hintDistance:plan.hintDistance}:null,
     route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,
     routeFilter:S.routeCoords.length?{along:Number.isFinite(S.routeFilter.along)?+S.routeFilter.along.toFixed(2):null,quality:S.routeFilter.quality,ambiguity:+(S.routeFilter.ambiguity||0).toFixed(3),candidates:S.routeFilter.candidates}:null,
-    fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),gpsRejected:S.gpsRejected},
+    fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),speedMps:+(S.fusion.speedMps||0).toFixed(2),accelerationMps2:+(S.fusion.accelerationMps2||0).toFixed(2),gpsRejected:S.gpsRejected},
     vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY,exposure:S.visionCue.exposure,lowLight:S.visionCue.lowLight}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;$("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
