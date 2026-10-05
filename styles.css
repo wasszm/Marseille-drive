@@ -144,3 +144,24 @@ body.drive-mode .horizon-hud{top:292px}
 
 .junction-lanes span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:54px}
 .junction-lanes span b{font-size:28px;line-height:1}.junction-lanes span small{max-width:76px;margin-top:3px;font-size:6px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* BETA 11 — immersive 3D layout */
+body.drive-mode .topbar{position:absolute;left:10px;right:10px;top:max(8px,env(safe-area-inset-top));padding:8px 11px;background:linear-gradient(180deg,rgba(7,12,16,.70),rgba(7,12,16,.52));border-color:rgba(255,255,255,.07);box-shadow:0 8px 24px rgba(0,0,0,.16);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+body.drive-mode .brand{font-size:10px;letter-spacing:1.45px}body.drive-mode .speedbox{font-size:24px}
+body.drive-mode .metrics{position:absolute;left:10px;right:10px;top:67px;margin:0;padding:6px 2px;background:rgba(7,12,16,.46);border-color:rgba(255,255,255,.06);box-shadow:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+body.drive-mode .metrics b{font-size:11px}body.drive-mode .metrics small{font-size:6px}
+body.drive-mode .toolbar{position:absolute;left:10px;right:10px;top:112px;margin:0;gap:4px}
+body.drive-mode .tool{padding:6px 2px;background:rgba(7,12,16,.54);border:1px solid rgba(255,255,255,.06);border-radius:12px;box-shadow:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+body.drive-mode .tool.active{background:rgba(255,255,255,.92);color:#101316}
+body.drive-mode .status{top:158px}
+body.drive-mode .maneuver-hud{top:166px;left:10px;max-width:226px;background:rgba(7,12,16,.66);border-color:rgba(255,255,255,.07);box-shadow:none;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
+body.drive-mode .fusion-badge{top:168px;right:10px;background:rgba(7,12,16,.60)}
+body.drive-mode .env-badge{top:193px;right:10px;background:rgba(7,12,16,.56)}
+body.drive-mode .belief-hud{top:224px;left:10px;background:rgba(7,12,16,.57)}
+body.drive-mode .horizon-hud{top:266px;left:10px;right:10px;background:rgba(7,12,16,.56);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+body.drive-mode .nav-card{left:10px;right:10px;bottom:max(7px,env(safe-area-inset-bottom));padding:8px 10px;background:rgba(7,12,16,.68);border-color:rgba(255,255,255,.07);box-shadow:0 8px 24px rgba(0,0,0,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+body.drive-mode .instruction{font-size:17px}body.drive-mode .detail{display:none}body.drive-mode .nav-row{margin-top:5px}body.drive-mode .advice{padding:5px 7px;font-size:8px}
+body.drive-mode .junction-assist{bottom:91px;left:10px;right:10px;padding:7px 9px;background:rgba(7,12,16,.62);border-color:rgba(255,255,255,.06);box-shadow:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+body.drive-mode .junction-text{font-size:11px}body.drive-mode .junction-lanes span{padding:4px 3px}body.drive-mode .junction-lanes span b{font-size:22px}
+body.drive-mode .vision-panel{top:225px}
+@media(max-height:720px){body.drive-mode .horizon-hud{display:none!important}body.drive-mode .belief-hud{top:218px}body.drive-mode .junction-assist{bottom:84px}body.drive-mode .nav-card{padding:7px 9px}}
