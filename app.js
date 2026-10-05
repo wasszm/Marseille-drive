@@ -202,12 +202,12 @@ function visibleEnvironment(pos,heading,maxM=260){
   if(!base){
     const out=[];
     for(const o of S.environment){
-      const d=haversineM(pos,o);if(d<4||d>265)continue;const a=signedAngle(heading,bearing(pos,o)),forward=Math.cos(rad(a))*d,side=Math.sin(rad(a))*d;
-      if(forward<4||forward>265||Math.abs(side)>135)continue;out.push({...o,distance:d,forward,side})
+      const range=(S.scene3d?.rangeM||280)+15,d=haversineM(pos,o);if(d<4||d>range)continue;const a=signedAngle(heading,bearing(pos,o)),forward=Math.cos(rad(a))*d,side=Math.sin(rad(a))*d;
+      if(forward<4||forward>(S.scene3d?.rangeM||280)||Math.abs(side)>135)continue;out.push({...o,distance:d,forward,side})
     }
     base=out.sort((a,b)=>b.forward-a.forward).slice(0,S.scene3d?.objectLimit||100);S.sceneEnvCache={key,list:base}
   }
-  return maxM>=260?base:base.filter(o=>o.distance<=maxM&&o.forward<=maxM)
+  return maxM>=(S.scene3d?.rangeM||260)?base:base.filter(o=>o.distance<=maxM&&o.forward<=maxM)
 }
 function openStreetReference(){if(!S.gps){setStatus("Active le GPS avant d’ouvrir la vue 360°.");return}const rb=S.lastMatch?(travelDirection(S.lastMatch,S.gps)==="forward"?S.lastMatch.roadBearing:(S.lastMatch.roadBearing+180)%360):0,heading=Math.round(S.gps.speedMps>1.5&&Number.isFinite(S.heading)?S.heading:rb),url=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(S.gps.lat+","+S.gps.lon)}&heading=${heading}&pitch=0&fov=85`;window.open(url,"_blank","noopener")}
 function initMap(){
@@ -1502,7 +1502,7 @@ function pathIndexAtForward(path,forward){let bi=0;for(let i=1;i<path.length;i++
 function screenAtForward(path,forward,w,h,hz){const i=pathIndexAtForward(path,forward);return roadScreenPoint(path[i]||{side:0,forward:0},w,h,hz)}
 function screenAtForwardOffset(path,forward,offset,w,h,hz){const i=pathIndexAtForward(path,forward);return roadScreenPoint(offsetLocalPathPoint(path,i,offset),w,h,hz)}
 function perspectiveEnvPoint(side,forward,w,h,hz){
-  if(forward<=4||forward>280)return null;
+  if(forward<=4||forward>(S.scene3d?.rangeM||280))return null;
   return roadScreenPoint({side,forward},w,h,hz)
 }
 function drawFallbackCity(c,w,h,hz){
@@ -1530,7 +1530,7 @@ function osmFacadeColor(tags,day){
 function projectGroundShape(geom,pos,heading,w,h,hz){
   if(!geom?.length)return null;const out=[];
   for(const g of geom){
-    const local=geoToLocal(pos,heading,g);if(local.forward<3||local.forward>285||Math.abs(local.side)>180)continue;
+    const local=geoToLocal(pos,heading,g);if(local.forward<3||local.forward>(S.scene3d?.rangeM||285)||Math.abs(local.side)>180)continue;
     const p=roadScreenPoint(local,w,h,hz);out.push({...p,local})
   }
   return out.length>=3?out:null
