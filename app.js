@@ -1394,7 +1394,7 @@ function currentDrawState(){
   return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns,destinations:lane?.destinations||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
 }
 function renderLoop(now=performance.now()){
-  advanceVisualGps(now);
+  advanceVisualGps(now);updateScene3dCamera();
   if(!S.demo&&now-S.lastHudAt>280){
     S.lastHudAt=now;const fp=fusionPosition();updateFusionBadge(fp,effectiveMatch());updateBeliefHud(S.lastLane);updateHorizonHud(S.lastNav,S.lastLane);
     if(S.view==="map"&&S.gps&&["PRÉDICTIF","GPS PERDU"].includes(S.fusion.mode))updateUserMarker(S.gps);
@@ -1444,9 +1444,39 @@ function scenePath(maxM=280){
   if(out.length<2)out.push({side:out[0]?.side||0,forward:maxM});
   return out
 }
+function updateScene3dPerformance(ms){
+  const P=S.scene3d;P.avgMs=P.avgMs?P.avgMs*.90+ms*.10:ms;
+  const now=performance.now();if(now-(P.lastAdjustAt||0)<1200)return;P.lastAdjustAt=now;
+  const old=P.quality;if(P.avgMs>29)P.quality="LOW";else if(P.avgMs>20)P.quality="MEDIUM";else if(P.avgMs<16.5)P.quality="HIGH";
+  if(P.quality==="HIGH"){P.objectLimit=110;P.buildingDetail=2;P.rangeM=300}
+  else if(P.quality==="MEDIUM"){P.objectLimit=82;P.buildingDetail=1;P.rangeM=275}
+  else{P.objectLimit=58;P.buildingDetail=0;P.rangeM=235}
+  if(old!==P.quality&&$("envBadge"))$("envBadge").textContent=`3D ${P.quality} · ${S.environment.length}`
+}
+function updateScene3dCamera(){
+  const P=S.scene3d,speed=S.gps?.speedMps||0,turn=S.lastNav?.turn,dist=S.lastNav?.distance;
+  let target=.295-clamp(speed/45,0,.018);if(turn&&turn!=="through"&&Number.isFinite(dist)&&dist<140)target+=.008*(1-clamp(dist/140,0,1));
+  P.targetHorizon=clamp(target,.27,.305);P.horizonRatio+=(P.targetHorizon-P.horizonRatio)*.055
+}
+function drawSkyDetails(c,w,h,hz,day){
+  if(day){
+    const x=w*.82,y=hz*.23;c.fillStyle="rgba(255,245,195,.48)";c.beginPath();c.arc(x,y,18,0,Math.PI*2);c.fill();
+    if(S.scene3d.quality!=="LOW"){c.fillStyle="rgba(255,255,255,.18)";for(const [cx,cy,rx] of [[.20,.25,24],[.34,.17,18],[.60,.30,20]]){c.beginPath();c.ellipse(w*cx,hz*cy,rx,rx*.28,0,0,Math.PI*2);c.fill()}}
+  }else{
+    c.fillStyle="rgba(215,225,230,.65)";c.beginPath();c.arc(w*.82,hz*.22,9,0,Math.PI*2);c.fill();
+    if(S.scene3d.quality==="HIGH"){c.fillStyle="rgba(255,255,255,.45)";for(let i=0;i<10;i++){const x=(i*73%97)/100*w,y=(i*41%31)/100*hz;c.fillRect(x,y,1,1)}}
+  }
+}
+function drawCurbs(c,w,h,hz,path,metrics){
+  const day=isDayScene(),draw=(off,side)=>{
+    const pts=offsetScreenPath(path,off,w,h,hz),inner=offsetScreenPath(path,off+side*.14,w,h,hz);
+    poly(c,[...pts,...inner.slice().reverse()],day?"#b9bdbc":"#697176");drawPathLine(c,pts,day?"#d3d5d4":"#858d91",1.1)
+  };
+  draw(metrics.asphaltMin,1);draw(metrics.asphaltMax,-1)
+}
 function roadScreenPoint(local,w,h,hz){
-  const maxM=280,f=clamp(local.forward,0,maxM),bot=h*1.04;
-  const y=bot-(bot-hz)*Math.pow(f/maxM,.56),ppm=(w*.055)/(1+f/38),x=w/2+local.side*ppm;
+  const maxM=S.scene3d?.rangeM||280,f=clamp(local.forward,0,maxM),bot=h*1.045;
+  const curve=Math.pow(f/maxM,.56),y=bot-(bot-hz)*curve,ppm=(w*.055)/(1+f/38),x=w/2+local.side*ppm;
   return{x,y,ppm,forward:f}
 }
 function offsetScreenPath(path,offset,w,h,hz){return path.map(p=>{const q=roadScreenPoint(p,w,h,hz);return[q.x+offset*q.ppm,q.y]})}
