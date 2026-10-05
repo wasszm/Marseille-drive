@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,previousMatch:null,matchQuality:0,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,heading:0,gpsWatch:null,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],lastRouteAlong:null,view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,previousMatch:null,matchQuality:0,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function setStatus(t){$("status").textContent=t}
 function roadName(r){const m={motorway:"Autoroute",trunk:"Voie rapide",primary:"Axe principal",secondary:"Route secondaire",tertiary:"Route tertiaire",residential:"Rue résidentielle",service:"Voie de service",unclassified:"Route",living_street:"Zone de rencontre"};return r?.tags?.name||r?.tags?.ref||m[r?.tags?.highway]||"Route sans nom"}
@@ -77,21 +77,43 @@ function initMap(){
   S.map.on("dragstart",()=>{S.followMap=false;document.body.classList.add("map-free")})
 }
 async function fetchOverpass(q){let last;for(const ep of CFG.overpass){const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),13000);try{const r=await fetch(ep,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:"data="+encodeURIComponent(q),signal:ctrl.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);return await r.json()}catch(e){last=e}finally{clearTimeout(timer)}}throw last||Error("Overpass indisponible")}
+function buildRoadJunctions(roads){
+  const nodes=new Map();
+  for(const road of roads){
+    if(!road.nodeIds?.length||road.nodeIds.length!==road.coords.length)continue;
+    road.nodeIds.forEach((id,i)=>{
+      let n=nodes.get(String(id));if(!n){n={id:String(id),lat:road.coords[i].lat,lon:road.coords[i].lon,links:[]};nodes.set(String(id),n)}
+      n.links.push({road,index:i})
+    })
+  }
+  const out=[];
+  for(const n of nodes.values()){
+    const unique=[...new Set(n.links.map(x=>x.road.id))];if(unique.length<2)continue;
+    const branches=[];
+    for(const link of n.links){
+      const c=link.road.coords,i=link.index;
+      if(i>0)branches.push({bearing:bearing(n,c[i-1]),road:link.road});
+      if(i<c.length-1)branches.push({bearing:bearing(n,c[i+1]),road:link.road})
+    }
+    out.push({id:n.id,lat:n.lat,lon:n.lon,ways:unique.length,branches})
+  }
+  return out
+}
 async function loadRoadData(lat,lon){
   if(S.roadLoading)return;S.roadLoading=true;setStatus("Chargement des routes autour de toi…");
   const b=bbox(lat,lon,CFG.queryRadiusKm),q=`[out:json][timeout:30];(way["highway"]["highway"!~"footway|path|steps|pedestrian|cycleway"](${b});node["highway"="traffic_signals"](${b}););out geom tags;`;
   try{
     const data=await fetchOverpass(q),roads=[],signals=[];
     for(const e of data.elements||[]){
-      if(e.type==="way"&&e.tags?.highway&&e.geometry?.length>1)roads.push({id:String(e.id),tags:e.tags,coords:e.geometry.map(p=>({lat:p.lat,lon:p.lon}))});
+      if(e.type==="way"&&e.tags?.highway&&e.geometry?.length>1)roads.push({id:String(e.id),tags:e.tags,coords:e.geometry.map(p=>({lat:p.lat,lon:p.lon})),nodeIds:Array.isArray(e.nodes)?e.nodes.map(String):[]});
       else if(e.type==="node"&&e.tags?.highway==="traffic_signals")signals.push({id:String(e.id),lat:e.lat,lon:e.lon,tags:e.tags})
     }
-    S.roads=roads;S.signals=signals;S.areaCenter={lat,lon};
+    S.roads=roads;S.signals=signals;S.junctions=buildRoadJunctions(roads);S.areaCenter={lat,lon};
     try{localStorage.setItem("mdRoadCacheV1",JSON.stringify({lat,lon,time:Date.now(),roads,signals}))}catch(_){}
     loadEnvironmentData(lat,lon);setStatus(`${roads.length} routes · ${signals.length} feux cartographiés`)
   }catch(e){
     let used=false;
-    try{const cache=JSON.parse(localStorage.getItem("mdRoadCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<3000){S.roads=cache.roads||[];S.signals=cache.signals||[];S.areaCenter={lat:cache.lat,lon:cache.lon};used=true;setStatus(`Mode cache local · ${S.roads.length} routes`)}}catch(_){}
+    try{const cache=JSON.parse(localStorage.getItem("mdRoadCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<3000){S.roads=cache.roads||[];S.signals=cache.signals||[];S.junctions=buildRoadJunctions(S.roads);S.areaCenter={lat:cache.lat,lon:cache.lon};used=true;setStatus(`Mode cache local · ${S.roads.length} routes`)}}catch(_){}
     if(!used)setStatus("Données OSM indisponibles — GPS toujours actif")
   }finally{S.roadLoading=false}
 }
@@ -589,6 +611,28 @@ function drawCrossings(c,w,h,hz,heading,total){
     c.restore()
   }
 }
+function drawMappedJunctions(c,w,h,hz,heading,path,total){
+  if(S.demo||!S.gps||!S.junctions.length)return;
+  const candidates=[];
+  for(const j of S.junctions){
+    const local=geoToLocal(S.gps,heading,j);if(local.forward<18||local.forward>150||Math.abs(local.side)>45)continue;
+    const rp=S.routeCoords.length?routeProjection(j,S.lastRouteAlong):null;
+    if(S.routeCoords.length&&rp&&rp.distance>28)continue;
+    candidates.push({...j,local})
+  }
+  candidates.sort((a,b)=>b.local.forward-a.local.forward);
+  for(const j of candidates.slice(0,5)){
+    const p=screenAtForward(path,j.local.forward,w,h,hz),roadHalf=CFG.laneWidthM*Math.max(1,total)/2*p.ppm,th=clamp(p.ppm*3.2,7,30);
+    const rel=j.branches.map(b=>signedAngle(heading,b.bearing));
+    const left=rel.some(a=>a<-35&&a>-145),right=rel.some(a=>a>35&&a<145);
+    c.fillStyle=isDayScene()?"#363b3d":"#181d20";
+    if(left)c.fillRect(0,p.y-th/2,p.x+roadHalf,p.y?th:th);
+    if(right)c.fillRect(p.x-roadHalf,p.y-th/2,w-(p.x-roadHalf),th);
+    c.strokeStyle=isDayScene()?"rgba(245,245,245,.72)":"rgba(220,225,228,.65)";c.lineWidth=1;
+    if(left){c.beginPath();c.moveTo(0,p.y-th/2);c.lineTo(p.x-roadHalf,p.y-th/2);c.moveTo(0,p.y+th/2);c.lineTo(p.x-roadHalf,p.y+th/2);c.stroke()}
+    if(right){c.beginPath();c.moveTo(p.x+roadHalf,p.y-th/2);c.lineTo(w,p.y-th/2);c.moveTo(p.x+roadHalf,p.y+th/2);c.lineTo(w,p.y+th/2);c.stroke()}
+  }
+}
 function drawJunctionGeometry(c,w,h,hz,d,path,total){
   if(!Number.isFinite(d.distance)||d.distance>145||d.arrived)return;
   const p=screenAtForward(path,Math.max(10,d.distance),w,h,hz),roadHalf=CFG.laneWidthM*Math.max(1,total)/2*p.ppm,th=clamp(p.ppm*4.5,10,52);
@@ -621,7 +665,7 @@ function draw3D(d={}){
   const laneW=CFG.laneWidthM,leftOffset=-roadHalf+(rec-1)*laneW,rightOffset=leftOffset+laneW;
   c.globalAlpha=.20;poly(c,[...offsetScreenPath(path,leftOffset,w,h,hz),...offsetScreenPath(path,rightOffset,w,h,hz).reverse()],"#38e88c");c.globalAlpha=1;
   for(let i=1;i<total;i++)drawPathLine(c,offsetScreenPath(path,-roadHalf+i*laneW,w,h,hz),"#d9dfe2",2,[10,13]);
-  drawCrossings(c,w,h,hz,heading,total);drawJunctionGeometry(c,w,h,hz,d,path,total);
+  drawCrossings(c,w,h,hz,heading,total);drawMappedJunctions(c,w,h,hz,heading,path,total);drawJunctionGeometry(c,w,h,hz,d,path,total);
   const arrowP=screenAtForward(path,18,w,h,hz);
   for(let i=1;i<=total;i++){const x=arrowP.x+(-roadHalf+(i-.5)*laneW)*arrowP.ppm;arrow(c,x,Math.min(h*.73,arrowP.y),i===rec,d.turn||"through")}
   if(Number.isFinite(d.distance)){const p=screenAtForward(path,clamp(d.distance,18,190),w,h,hz);c.fillStyle="#fff";c.font="900 12px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.round(d.distance)} m`,p.x,p.y-12)}
