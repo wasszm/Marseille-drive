@@ -5,6 +5,7 @@ const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:70
 const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
+laneCalibration:{byRoad:{}},
 laneFilter:{roadId:null,index:null,candidate:null,hits:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function setStatus(t,ms=3200){
@@ -293,16 +294,36 @@ function laneFromOffset(geom,off){
   for(let i=0;i<geom.widths.length;i++)if(x>=geom.bounds[i]&&x<geom.bounds[i+1])return i+1;
   return geom.widths.length
 }
+function median(values){
+  const a=values.filter(Number.isFinite).slice().sort((x,y)=>x-y);if(!a.length)return null;
+  const mid=Math.floor(a.length/2);return a.length%2?a[mid]:(a[mid-1]+a[mid])/2
+}
+function calibrationKey(m,dir){return m?.road?.id?`${m.road.id}:${dir}`:null}
+function laneCalibrationBias(m,dir){
+  const key=calibrationKey(m,dir),c=key?S.laneCalibration.byRoad[key]:null;
+  if(!c||c.samples.length<4||Date.now()-c.updatedAt>45*60*1000||c.mad>1.25)return{bias:0,active:false,count:c?.samples?.length||0,mad:c?.mad??null};
+  return{bias:clamp(c.bias,-1.6,1.6),active:true,count:c.samples.length,mad:c.mad}
+}
+function addLaneCalibrationSample(m,lane,truthIndex){
+  if(!m||!lane?.geometry||!Number.isFinite(lane.lateralRawM??lane.lateralM)||!truthIndex)return;
+  const centers=laneCenters(lane.geometry),expected=centers[truthIndex-1];if(!Number.isFinite(expected))return;
+  const residual=(lane.lateralRawM??lane.lateralM)-expected;if(Math.abs(residual)>4.5)return;
+  const key=calibrationKey(m,lane.dir);if(!key)return;
+  const c=S.laneCalibration.byRoad[key]||(S.laneCalibration.byRoad[key]={samples:[],bias:0,mad:99,updatedAt:0});
+  c.samples.push(residual);if(c.samples.length>28)c.samples.shift();
+  const med=median(c.samples),dev=c.samples.map(x=>Math.abs(x-med)),mad=median(dev);
+  c.bias=med??0;c.mad=mad??99;c.updatedAt=Date.now()
+}
 function estimateLane(m,pos){
   const dir=travelDirection(m,pos),total=laneCount(m.road.tags,dir),rb=dir==="forward"?m.roadBearing:(m.roadBearing+180)%360,acc=Number.isFinite(pos.accuracy)?pos.accuracy:999,headErr=Number.isFinite(pos.heading)?angleDiff(pos.heading,rb):90;
   const mapQ=Number.isFinite(m.quality)?m.quality:50,confidence=clamp(Math.round(92-Math.min(m.distance,40)*1.1-Math.min(acc,40)*2.25-Math.min(headErr,90)*.22+(mapQ-50)*.18),0,100);
   const hasTurnLanes=Boolean(directionalLaneValue(m.road.tags,"turn:lanes",dir)),geom=laneGeometry(m.road.tags,dir,total);
   const base={dir,total,confidence,hasTurnLanes,turns:laneTurns(m.road.tags,dir),changes:laneChanges(m.road.tags,dir),accessible:laneAccess(m.road.tags,dir,total),geometry:geom};
   if(!total)return{...base,index:null,candidateIndex:null,reason:"Nombre de voies absent dans OSM"};
-  const off=signedLateralM(pos,m.nearest,rb),candidateIndex=laneFromOffset(geom,off);
-  if(!candidateIndex)return{...base,index:null,candidateIndex:null,lateralM:off,reason:"Position latérale incompatible avec la géométrie des voies"};
+  const offRaw=signedLateralM(pos,m.nearest,rb),cal=laneCalibrationBias(m,dir),off=offRaw-cal.bias,candidateIndex=laneFromOffset(geom,off);
+  if(!candidateIndex)return{...base,index:null,candidateIndex:null,lateralM:off,lateralRawM:offRaw,calibration:cal,reason:"Position latérale incompatible avec la géométrie des voies"};
   const penalty=geom?.quality==="inferred"?8:0,finalConfidence=clamp(confidence-penalty,0,100),reliable=acc<=5.5&&finalConfidence>=62;
-  return{...base,index:reliable?candidateIndex:null,candidateIndex,lateralM:off,confidence:finalConfidence,reason:reliable?(geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM"):`Mesure latérale disponible · GPS ±${Math.round(acc)} m`}
+  return{...base,index:reliable?candidateIndex:null,candidateIndex,lateralM:off,lateralRawM:offRaw,calibration:cal,confidence:clamp(finalConfidence+(cal.active?4:0),0,100),reason:reliable?(geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM")+(cal.active?` · CAL ${cal.bias>=0?"+":""}${cal.bias.toFixed(1)}m`:""):`Mesure latérale disponible · GPS ±${Math.round(acc)} m${cal.active?` · CAL ${cal.bias>=0?"+":""}${cal.bias.toFixed(1)}m`:""}`}
 }
 function normalizeProb(v){
   const sum=v.reduce((a,b)=>a+(Number.isFinite(b)?Math.max(0,b):0),0);
@@ -817,10 +838,10 @@ function markLaneTruth(index){
     predicted:S.lastLane.index,confidence:S.lastLane.confidence,
     matchQuality:S.lastMatch?.quality??0,matchDistanceM:S.lastMatch?+S.lastMatch.distance.toFixed(2):null,
     gpsAccuracy:S.rawGps?.accuracy??S.gps.accuracy,
-    vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary}:null,
+    vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary}:null,calibration:S.lastLane.calibration||null,
     road:S.lastMatch?roadName(S.lastMatch.road):null,wayId:S.lastMatch?.road?.id||null,lat:S.gps.lat,lon:S.gps.lon
   };
-  S.truthEvents.push(ev);$("exportBtn").disabled=false;$("diagTruth").textContent=`voie ${index}/${S.lastLane.total}`;renderTruthButtons(S.lastLane);setStatus(`Vérité terrain enregistrée : voie ${index}/${S.lastLane.total}`)
+  S.truthEvents.push(ev);addLaneCalibrationSample(S.lastMatch,S.lastLane,index);$("exportBtn").disabled=false;$("diagTruth").textContent=`voie ${index}/${S.lastLane.total}`;renderTruthButtons(S.lastLane);setStatus(`Vérité terrain enregistrée : voie ${index}/${S.lastLane.total}`)
 }
 function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav){
   if(!$("diagGps"))return;
@@ -878,7 +899,7 @@ function exportTrack(){
 }
 function resetFusionForReplay(){
   S.fusion={position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null};
-  S.laneBelief={roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0};
+  S.laneBelief={roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0};S.laneCalibration={byRoad:{}};
   S.laneFilter={roadId:null,index:null,candidate:null,hits:0};S.lastMatch=null;S.lastGoodMatch=null;S.lastGoodMatchAt=0;S.previousMatch=null;S.lastLane=null;S.lastNav=null;S.lastSignal=null;S.visualGps=null;S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.gpsRejected=0
 }
 function replayTruthIndex(points,truth){
