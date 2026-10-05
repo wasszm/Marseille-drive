@@ -322,10 +322,29 @@ function travelDirection(m,pos){
   return angleDiff(pos.heading,m.roadBearing)<=90?"forward":"backward"
 }
 function signedLateralM(pos,nearest,rb){const d=haversineM(pos,nearest),b=bearing(nearest,pos);return Math.sin(rad(((b-rb+540)%360)-180))*d}
+function parseMeters(v){
+  const raw=String(v??"").trim().toLowerCase().replace(",",".");if(!raw)return null;
+  const n=parseFloat(raw);if(!Number.isFinite(n))return null;
+  if(raw.includes("ft")||raw.includes("'"))return n*.3048;
+  return n
+}
 function parseLaneWidths(tags,dir,total){
-  const raw=directionalLaneValue(tags,"width:lanes",dir),vals=pipe(raw).map(v=>parseFloat(String(v).replace(",",".")));
+  const raw=directionalLaneValue(tags,"width:lanes",dir),vals=pipe(raw).map(parseMeters);
   if(vals.length===total&&vals.every(v=>Number.isFinite(v)&&v>=2&&v<=5.5))return vals;
+  const totalWidth=parseMeters(tags["width:carriageway"]||tags.width);
+  if(Number.isFinite(totalWidth)&&total&&totalWidth/total>=2.2&&totalWidth/total<=5.2)return Array.from({length:total},()=>totalWidth/total);
   return Array.from({length:total},()=>CFG.laneWidthM)
+}
+function placementValue(tags,dir){
+  return tags?.[`placement:${dir}`]||tags?.placement||""
+}
+function applyPlacement(bounds,widths,placement){
+  const raw=String(placement||"").toLowerCase(),m=raw.match(/^(middle_of|left_of|right_of):?(\d+)?/);if(!m)return{bounds,shift:0,source:null};
+  const lane=clamp(parseInt(m[2]||"1",10)||1,1,widths.length);let anchor=0;
+  if(m[1]==="middle_of")anchor=(bounds[lane-1]+bounds[lane])/2;
+  else if(m[1]==="left_of")anchor=bounds[lane-1];
+  else anchor=bounds[lane];
+  return{bounds:bounds.map(x=>x-anchor),shift:-anchor,source:raw}
 }
 function laneGeometry(tags,dir,total){
   if(!total)return null;
@@ -333,15 +352,14 @@ function laneGeometry(tags,dir,total){
   let start=-sum/2,quality="direct";
   if(!oneway){
     const full=positiveInt(tags.lanes),opp=positiveInt(dir==="forward"?tags["lanes:backward"]:tags["lanes:forward"]);
-    let totalRoad=full;
-    if(!totalRoad&&opp)totalRoad=total+opp;
-    if(!totalRoad){totalRoad=total*2;quality="inferred"}
-    const roadWidth=totalRoad*CFG.laneWidthM;
-    start=roadWidth/2-sum;
+    let totalRoad=full;if(!totalRoad&&opp)totalRoad=total+opp;if(!totalRoad){totalRoad=total*2;quality="inferred"}
+    const roadWidth=totalRoad*CFG.laneWidthM;start=roadWidth/2-sum;
     if(!positiveInt(dir==="forward"?tags["lanes:forward"]:tags["lanes:backward"]))quality="inferred"
   }
-  const bounds=[start];let x=start;for(const w of widths){x+=w;bounds.push(x)}
-  return{widths,bounds,start,end:x,quality,oneway}
+  let bounds=[start],x=start;for(const w of widths){x+=w;bounds.push(x)}
+  const placed=applyPlacement(bounds,widths,placementValue(tags,dir));bounds=placed.bounds;
+  if(placed.source)quality=quality==="inferred"?"placement+inferred":"placement";
+  return{widths,bounds,start:bounds[0],end:bounds[bounds.length-1],quality,oneway,placement:placed.source,placementShift:placed.shift}
 }
 function laneFromOffset(geom,off){
   if(!geom)return null;
@@ -379,8 +397,8 @@ function estimateLane(m,pos){
   if(!total)return{...base,index:null,candidateIndex:null,reason:"Nombre de voies absent dans OSM"};
   const offRaw=signedLateralM(pos,m.nearest,rb),cal=laneCalibrationBias(m,dir),off=offRaw-cal.bias,candidateIndex=laneFromOffset(geom,off);
   if(!candidateIndex)return{...base,index:null,candidateIndex:null,lateralM:off,lateralRawM:offRaw,calibration:cal,reason:"Position latérale incompatible avec la géométrie des voies"};
-  const penalty=geom?.quality==="inferred"?8:0,finalConfidence=clamp(confidence-penalty,0,100),reliable=acc<=5.5&&finalConfidence>=62;
-  return{...base,index:reliable?candidateIndex:null,candidateIndex,lateralM:off,lateralRawM:offRaw,calibration:cal,confidence:clamp(finalConfidence+(cal.active?4:0),0,100),reason:reliable?(geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM")+(cal.active?` · CAL ${cal.bias>=0?"+":""}${cal.bias.toFixed(1)}m`:""):`Mesure latérale disponible · GPS ±${Math.round(acc)} m${cal.active?` · CAL ${cal.bias>=0?"+":""}${cal.bias.toFixed(1)}m`:""}`}
+  const penalty=geom?.quality==="inferred"?8:geom?.quality==="placement+inferred"?5:0,bonus=geom?.placement?3:0,finalConfidence=clamp(confidence-penalty+bonus,0,100),reliable=acc<=5.5&&finalConfidence>=62;
+  return{...base,index:reliable?candidateIndex:null,candidateIndex,lateralM:off,lateralRawM:offRaw,calibration:cal,confidence:clamp(finalConfidence+(cal.active?4:0),0,100),reason:reliable?(geom?.placement?`Estimation GPS + placement OSM (${geom.placement})`:geom?.quality==="inferred"?"Estimation GPS + axe OSM (géométrie inférée)":"Estimation GPS + géométrie OSM")+(cal.active?` · CAL ${cal.bias>=0?"+":""}${cal.bias.toFixed(1)}m`:""):`Mesure latérale disponible · GPS ±${Math.round(acc)} m${cal.active?` · CAL ${cal.bias>=0?"+":""}${cal.bias.toFixed(1)}m`:""}`}
 }
 function normalizeProb(v){
   const sum=v.reduce((a,b)=>a+(Number.isFinite(b)?Math.max(0,b):0),0);
