@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,sceneEnvCache:null,userMarker:null,accuracyCircle:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},
@@ -646,8 +646,13 @@ function osrmLaneHint(intersection,step){
   const point={lat:loc[1],lon:loc[0]},proj=routeProjection(point,null);if(!proj)return null;
   return{along:proj.along,point,lanes:parsed,total:parsed.length,bearings:intersection.bearings||[],entry:intersection.entry||[],in:intersection.in,out:intersection.out,road:step.name||""}
 }
+function routeIntersectionModel(intersection,step){
+  const loc=intersection?.location;if(!Array.isArray(loc)||loc.length<2)return null;
+  const point={lat:loc[1],lon:loc[0]},proj=routeProjection(point,null);if(!proj)return null;
+  return{along:proj.along,point,bearings:Array.isArray(intersection.bearings)?intersection.bearings:[],entry:Array.isArray(intersection.entry)?intersection.entry:[],in:Number.isFinite(intersection.in)?intersection.in:null,out:Number.isFinite(intersection.out)?intersection.out:null,road:step.name||"",lanes:Array.isArray(intersection.lanes)?intersection.lanes:null}
+}
 function buildRouteManeuvers(){
-  S.routeManeuvers=[];S.routeLaneHints=[];
+  S.routeManeuvers=[];S.routeLaneHints=[];S.routeIntersections=[];
   const steps=S.route?.legs?.[0]?.steps||[];
   for(const step of steps){
     const loc=step.maneuver?.location;
@@ -655,10 +660,14 @@ function buildRouteManeuvers(){
       const point={lat:loc[1],lon:loc[0]},proj=routeProjection(point,null);
       if(proj)S.routeManeuvers.push({step,along:proj.along,point,type:step.maneuver?.type||"",modifier:step.maneuver?.modifier||"straight"})
     }
-    for(const inter of step.intersections||[]){const hint=osrmLaneHint(inter,step);if(hint)S.routeLaneHints.push(hint)}
+    for(const inter of step.intersections||[]){
+      const model=routeIntersectionModel(inter,step);if(model)S.routeIntersections.push(model);
+      const hint=osrmLaneHint(inter,step);if(hint)S.routeLaneHints.push(hint)
+    }
   }
-  S.routeManeuvers.sort((a,b)=>a.along-b.along);S.routeLaneHints.sort((a,b)=>a.along-b.along);
-  const dedup=[];for(const h of S.routeLaneHints){const prev=dedup[dedup.length-1];if(prev&&Math.abs(prev.along-h.along)<4&&prev.total===h.total)continue;dedup.push(h)}S.routeLaneHints=dedup
+  S.routeManeuvers.sort((a,b)=>a.along-b.along);S.routeLaneHints.sort((a,b)=>a.along-b.along);S.routeIntersections.sort((a,b)=>a.along-b.along);
+  const dedup=[];for(const h of S.routeLaneHints){const prev=dedup[dedup.length-1];if(prev&&Math.abs(prev.along-h.along)<4&&prev.total===h.total)continue;dedup.push(h)}S.routeLaneHints=dedup;
+  const ints=[];for(const it of S.routeIntersections){const prev=ints[ints.length-1];if(prev&&Math.abs(prev.along-it.along)<2&&prev.bearings.length===it.bearings.length)continue;ints.push(it)}S.routeIntersections=ints
 }
 function upcomingRouteLaneHint(along=S.fusion.along??S.lastRouteAlong,maxAhead=900){
   if(!Number.isFinite(along)||!S.routeLaneHints.length)return null;
@@ -840,7 +849,7 @@ async function calculateRoute(lat,lon,isReroute=false){
   finally{clearTimeout(timer);S.routeLoading=false}
 }
 function setDestination(lat,lon,label=null){S.destinationLabel=label;calculateRoute(lat,lon,false)}
-function clearRoute(){S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.routeLaneHints=[];S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
+function clearRoute(){S.route=null;S.routeCoords=[];S.routeCum=[];S.routeManeuvers=[];S.routeLaneHints=[];S.routeIntersections=[];S.lastRouteAlong=null;S.routeFilter={along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0};S.destination=null;S.destinationLabel=null;S.lastVoiceKey="";S.arrived=false;S.offRouteHits=0;if(S.routeLayer){S.map.removeLayer(S.routeLayer);S.routeLayer=null}if(S.destinationMarker){S.map.removeLayer(S.destinationMarker);S.destinationMarker=null}$("routeTitle").textContent="Touchez la carte pour choisir une destination";$("routeMeta").textContent="Active d’abord le GPS.";$("clearRoute").hidden=true;$("progressWrap").classList.add("hidden");$("progressBar").style.width="0%";$("junctionAssist").classList.add("hidden");if(S.gps)updateUi(S.gps)}
 function speakNav(text){
   if(!S.voiceEnabled||!("speechSynthesis"in window)||!text)return;
   try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang="fr-FR";u.rate=.98;u.pitch=1;window.speechSynthesis.speak(u)}catch(_){}
@@ -1300,6 +1309,21 @@ function drawCrossings(c,w,h,hz,heading,total){
     c.restore()
   }
 }
+function drawRouteIntersections(c,w,h,hz,heading,path,total){
+  if(S.demo||!S.routeIntersections.length)return;
+  const along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong;if(!Number.isFinite(along))return;
+  const visible=S.routeIntersections.filter(x=>x.along>=along+12&&x.along<=along+180).slice(0,5),roadHalfM=CFG.laneWidthM*Math.max(1,total)/2;
+  for(const it of visible){
+    const distance=it.along-along,p=screenAtForward(path,distance,w,h,hz),scale=p.ppm,baseHalf=roadHalfM*scale;
+    it.bearings.forEach((b,i)=>{
+      if(i===it.in)return;const rel=signedAngle(heading,b);if(Math.abs(rel)<18||Math.abs(rel)>168)return;
+      const reachable=it.entry?.[i]!==false,isOut=i===it.out,span=clamp(42+scale*12,42,w*.32),dx=Math.sin(rad(rel))*span,dy=-Math.cos(rad(rel))*span*.28;
+      c.save();c.strokeStyle=isOut?"rgba(61,239,139,.82)":reachable?(isDayScene()?"rgba(65,70,72,.92)":"rgba(29,35,39,.96)"):"rgba(90,95,98,.28)";c.lineWidth=isOut?Math.max(5,scale*1.25):Math.max(7,scale*2.1);c.lineCap="round";c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke();
+      if(isOut){c.strokeStyle="rgba(224,255,236,.9)";c.lineWidth=Math.max(1.5,scale*.34);c.setLineDash([6,6]);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke()}
+      c.restore()
+    })
+  }
+}
 function drawMappedJunctions(c,w,h,hz,heading,path,total){
   const pos=scenePosition();if(S.demo||!pos||!S.junctions.length)return;
   const candidates=[];
@@ -1414,7 +1438,7 @@ function draw3D(d={}){
     const divider=layout.divider===i;
     drawPathLine(c,offsetScreenPath(path,-roadHalf+i*laneW,w,h,hz),divider?"#f2f2f2":"#d9dfe2",divider?2.5:2,divider?[]:[10,13])
   }
-  drawCrossings(c,w,h,hz,heading,visualTotal);drawMappedJunctions(c,w,h,hz,heading,path,visualTotal);drawJunctionGeometry(c,w,h,hz,d,path,visualTotal);drawDecisionRibbon(c,w,h,hz,d,path,visualTotal);
+  drawCrossings(c,w,h,hz,heading,visualTotal);drawRouteIntersections(c,w,h,hz,heading,path,visualTotal);drawMappedJunctions(c,w,h,hz,heading,path,visualTotal);drawJunctionGeometry(c,w,h,hz,d,path,visualTotal);drawDecisionRibbon(c,w,h,hz,d,path,visualTotal);
   const arrowP=screenAtForward(path,18,w,h,hz);
   for(let i=1;i<=total;i++){const vi=layout.ownOffset+i,x=arrowP.x+(-roadHalf+(vi-.5)*laneW)*arrowP.ppm,lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");arrow(c,x,Math.min(h*.73,arrowP.y),i===rec,lt)}
   if(Number.isFinite(d.distance)){const p=screenAtForward(path,clamp(d.distance,18,190),w,h,hz);c.fillStyle="#fff";c.font="900 12px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.round(d.distance)} m`,p.x,p.y-12)}
