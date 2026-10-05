@@ -1320,8 +1320,9 @@ function advanceVisualGps(now){
   S.visualGps.heading=lerpAngle(S.visualGps.heading||target.heading,target.heading||0,a)
 }
 function currentDrawState(){
-  const lane=S.lastLane,nav=S.lastNav,plan=nav&&lane?routeLaneStrategy(lane,nav):null;
-  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns:lane?.turns||[],destinations:lane?.destinations||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
+  const lane=S.lastLane,nav=S.lastNav,plan=nav&&lane?routeLaneStrategy(lane,nav):null,hint=plan?.hint&&plan.hint.total===lane?.total?plan.hint:null;
+  const turns=lane?.hasTurnLanes?lane.turns:(hint?hint.lanes.map(l=>(l.indications?.length?l.indications.join(";"):"through")):(lane?.turns||[]));
+  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns,destinations:lane?.destinations||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
 }
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);
