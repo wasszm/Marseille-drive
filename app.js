@@ -821,7 +821,7 @@ function maneuverInstruction(m,turn){
   if(type==="on ramp"||type==="ramp")return side?`Prends la bretelle ${side}`:"Prends la bretelle";
   if(type==="off ramp")return side?`Prends la sortie ${side}`:"Prends la sortie";
   if(type==="end of road")return side?`Au bout de la route, tourne ${side}`:"Au bout de la route, tourne";
-  if(type.includes("roundabout")||type==="rotary"){const exit=m?.exit;return exit?`Au rond-point, prends la sortie ${exit}`:"Entre dans le rond-point"}
+  if(type.includes("roundabout")||type==="rotary"){const exit=m?.step?.maneuver?.exit??m?.exit;return exit?`Au rond-point, prends la sortie ${exit}`:"Entre dans le rond-point"}
   if(turn==="left")return"Tourne à gauche";
   if(turn==="right")return"Tourne à droite";
   if(turn==="uturn")return"Fais demi-tour";
