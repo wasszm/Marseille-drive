@@ -84,7 +84,7 @@ body.drive-mode .topbar{background:rgba(7,12,16,.76)}
 .user-dot{transition:transform .25s linear;transform-origin:center}
 .user-dot:after{content:"";position:absolute;left:50%;top:-10px;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid #1d79ff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
 
-/* BETA 8 — fusion HUD */
+/* BETA 9 — fusion HUD */
 .fusion-badge{position:absolute;top:229px;right:12px;padding:5px 8px;border-radius:9px;background:rgba(8,13,17,.82);border:1px solid rgba(255,255,255,.09);font-size:7px;font-weight:900;letter-spacing:.45px;opacity:.86}
 .maneuver-hud{display:none;position:absolute;left:12px;top:199px;max-width:230px;padding:9px 11px;align-items:center;gap:10px;background:rgba(7,12,16,.82);pointer-events:none}
 .maneuver-glyph{width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:#fff;color:#111;font-size:24px;font-weight:950;flex:0 0 auto}
