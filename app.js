@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,gpsDiagnostics:{history:[],multipath:0,jitterEvents:0,roadSwitches:0},visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionSignalCue:null,visionStableFrames:0,visionCalibration:{samples:[],biasM:0,mad:99,active:false},compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayClock:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,gpsDiagnostics:{history:[],multipath:0,jitterEvents:0,roadSwitches:0},visualGps:null,heading:0,gpsWatch:null,wakeLock:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionSignalCue:null,visionStableFrames:0,visionCalibration:{samples:[],biasM:0,mad:99,active:false},compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayClock:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
@@ -984,7 +984,7 @@ function updateUi(pos){
   }else{$("instruction").textContent=roadName(m.road);$("detail").textContent=lane.reason;$("advice").textContent=adviceText(lane,null)}
   draw3D(currentDrawState());updateDiagnostics(navPos,m,lane,nav);maybeReroute(pos,nav)
 }
-function startGps(){enableCompass();if(!window.isSecureContext){setStatus("GPS : ouvre bien l’adresse HTTPS GitHub Pages.");return}if(!navigator.geolocation){setStatus("GPS non disponible.");return}$("permission")?.remove();$("gpsBtn").classList.add("active");$("gpsBtn").querySelector("span").textContent="Actif";if(S.gpsWatch!==null)navigator.geolocation.clearWatch(S.gpsWatch);S.gpsWatch=navigator.geolocation.watchPosition(async p=>{const raw=gpsMeasurement(p);S.rawGps=raw;S.gps=smoothGps(raw);if(!S.visualGps)S.visualGps={...S.gps};S.heading=S.gps.heading;if(!S.areaCenter||haversineM(S.gps,S.areaCenter)>CFG.reloadAfterM)await loadRoadData(S.gps.lat,S.gps.lon);if(!S.environmentCenter||haversineM(S.gps,S.environmentCenter)>240)loadEnvironmentData(S.gps.lat,S.gps.lon);updateUi(S.gps);updateUserMarker(S.gps);recordSample();prefetchAheadPack();if(S.destination&&!S.route&&!S.routeLoading&&Date.now()-S.lastRouteAttemptAt>15000)calculateRoute(S.destination.lat,S.destination.lon,false);updateFusionBadge(S.gps,S.lastMatch)},e=>setStatus("GPS : "+e.message),{enableHighAccuracy:true,maximumAge:500,timeout:15000})}
+function startGps(){enableCompass();requestNavWakeLock();if(!window.isSecureContext){setStatus("GPS : ouvre bien l’adresse HTTPS GitHub Pages.");return}if(!navigator.geolocation){setStatus("GPS non disponible.");return}$("permission")?.remove();$("gpsBtn").classList.add("active");$("gpsBtn").querySelector("span").textContent="Actif";if(S.gpsWatch!==null)navigator.geolocation.clearWatch(S.gpsWatch);S.gpsWatch=navigator.geolocation.watchPosition(async p=>{const raw=gpsMeasurement(p);S.rawGps=raw;S.gps=smoothGps(raw);if(!S.visualGps)S.visualGps={...S.gps};S.heading=S.gps.heading;if(!S.areaCenter||haversineM(S.gps,S.areaCenter)>CFG.reloadAfterM)await loadRoadData(S.gps.lat,S.gps.lon);if(!S.environmentCenter||haversineM(S.gps,S.environmentCenter)>240)loadEnvironmentData(S.gps.lat,S.gps.lon);updateUi(S.gps);updateUserMarker(S.gps);recordSample();prefetchAheadPack();if(S.destination&&!S.route&&!S.routeLoading&&Date.now()-S.lastRouteAttemptAt>15000)calculateRoute(S.destination.lat,S.destination.lon,false);updateFusionBadge(S.gps,S.lastMatch)},e=>setStatus("GPS : "+e.message),{enableHighAccuracy:true,maximumAge:500,timeout:15000})}
 async function calculateRoute(lat,lon,isReroute=false){
   if(!S.gps){S.destination={lat,lon};setStatus("Destination mémorisée · en attente du GPS.");return}
   if(S.routeLoading)return;S.routeLoading=true;S.lastRouteAttemptAt=Date.now();S.destination={lat,lon};
@@ -1313,13 +1313,18 @@ function analyzeVisionFrame(){
   $("visionStatus").textContent=`Vision ${cue.confidence}% · ${state}${avgLum<72?" · faible lumière":""} · fusion prudente`;
   updateDiagnostics()
 }
+async function requestNavWakeLock(){
+  if(!navigator.wakeLock?.request||document.visibilityState!=="visible"||S.wakeLock)return;
+  try{S.wakeLock=await navigator.wakeLock.request("screen");S.wakeLock.addEventListener?.("release",()=>{S.wakeLock=null})}catch(_){}
+}
+async function releaseNavWakeLock(){try{await S.wakeLock?.release?.()}catch(_){}S.wakeLock=null}
 function setView(v){
   S.view=v;document.body.classList.toggle("drive-mode",v==="drive");
   $("map").style.display=v==="map"?"block":"none";$("drive").style.display=v==="drive"?"block":"none";$("car").style.display=v==="drive"?"block":"none";
   $("mapBtn").classList.toggle("active",v==="map");$("driveBtn").classList.toggle("active",v==="drive");
   $("modeLabel").textContent=`BETA 9 · ${v==="map"?"CARTE RÉELLE":"NAVIGATION 3D"}`;
   if(v==="map")setTimeout(()=>S.map.invalidateSize(),80);
-  else draw3D(currentDrawState())
+  else{requestNavWakeLock();draw3D(currentDrawState())}
 }
 async function toggleVision(){
   if(S.visionStream){closeVision();return}
@@ -1673,7 +1678,7 @@ function bind(){
   $("searchInput").addEventListener("input",()=>{if($("searchInput").value.trim().length<3)clearSearchResults()});
   window.addEventListener("online",()=>setStatus("Connexion rétablie"));
   window.addEventListener("offline",()=>setStatus("Hors ligne · GPS et caches locaux restent disponibles"));
-  window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.view==="map")setTimeout(()=>S.map.invalidateSize(),80)});
+  window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){if(S.view==="map")setTimeout(()=>S.map.invalidateSize(),80);if(S.gpsWatch!==null||S.view==="drive")requestNavWakeLock()}});
   window.addEventListener("resize",()=>{if(S.view==="drive")draw3D(currentDrawState())})
 }
 async function boot(){
