@@ -1887,14 +1887,14 @@ function drawEgoMarker(c,w,h,d){
 }
 function drawLaneCountTransition(c,w,h,hz,path,d,metrics){
   const future=Number(d.hintTotal),current=metrics.total,distance=Number(d.hintDistance);if(!Number.isFinite(future)||!Number.isFinite(distance)||future===current||distance<28||distance>245)return;
-  const diff=future-current,side=d.turn==="left"?-1:1,startF=clamp(distance-105,18,170),endF=clamp(distance,45,235),start=screenAtForward(path,startF,w,h,hz),end=screenAtForward(path,endF,w,h,hz),base=side<0?metrics.driveMin:metrics.driveMax,delta=Math.abs(diff)*CFG.laneWidthM;
+  const diff=future-current,side=d.turn==="left"?-1:1,startF=clamp(distance-105,18,170),endF=clamp(distance,45,235),base=side<0?metrics.driveMin:metrics.driveMax,delta=Math.abs(diff)*CFG.laneWidthM;
   if(diff>0){
-    const a=[start.x+base*start.ppm,start.y],b=[end.x+base*end.ppm,end.y],c2=[end.x+(base+side*delta)*end.ppm,end.y],d2=[start.x+(base+side*.08)*start.ppm,start.y];
+    const aP=screenAtForwardOffset(path,startF,base,w,h,hz),bP=screenAtForwardOffset(path,endF,base,w,h,hz),cP=screenAtForwardOffset(path,endF,base+side*delta,w,h,hz),dP=screenAtForwardOffset(path,startF,base+side*.08,w,h,hz),a=[aP.x,aP.y],b=[bP.x,bP.y],c2=[cP.x,cP.y],d2=[dP.x,dP.y];
     c.save();c.globalAlpha=.96;poly(c,[a,b,c2,d2],roadSurfaceColor());c.globalAlpha=1;
-    for(let k=1;k<=diff;k++){const frac=k/diff,offEnd=base+side*delta*frac;c.strokeStyle="rgba(226,232,234,.72)";c.lineWidth=1.3;c.setLineDash([7,9]);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(end.x+offEnd*end.ppm,end.y);c.stroke()}c.restore()
+    for(let k=1;k<=diff;k++){const frac=k/diff,offEnd=base+side*delta*frac,eP=screenAtForwardOffset(path,endF,offEnd,w,h,hz);c.strokeStyle="rgba(226,232,234,.72)";c.lineWidth=1.3;c.setLineDash([7,9]);c.beginPath();c.moveTo(aP.x,aP.y);c.lineTo(eP.x,eP.y);c.stroke()}c.restore()
   }else{
     const count=Math.abs(diff),inner=base-side*count*CFG.laneWidthM;c.save();c.strokeStyle="rgba(235,238,238,.48)";c.lineWidth=1.2;
-    for(let k=0;k<7;k++){const t=k/7,f=startF+(endF-startF)*t,p=screenAtForward(path,f,w,h,hz),edge=base+(inner-base)*t,x1=p.x+edge*p.ppm,x2=p.x+(edge-side*CFG.laneWidthM*.7)*p.ppm;c.beginPath();c.moveTo(x1,p.y);c.lineTo(x2,p.y-2);c.stroke()}c.restore()
+    for(let k=0;k<7;k++){const t=k/7,f=startF+(endF-startF)*t,edge=base+(inner-base)*t,p1=screenAtForwardOffset(path,f,edge,w,h,hz),p2=screenAtForwardOffset(path,f,edge-side*CFG.laneWidthM*.7,w,h,hz);c.beginPath();c.moveTo(p1.x,p1.y);c.lineTo(p2.x,p2.y);c.stroke()}c.restore()
   }
 }
 function drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics){
