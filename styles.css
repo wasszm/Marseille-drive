@@ -120,3 +120,7 @@ body.drive-mode .fusion-badge{max-width:45vw;white-space:nowrap;overflow:hidden;
 body.drive-mode .belief-hud.hidden{display:none}
 
 .maneuver-after{font-size:7px!important;opacity:.78!important;margin-top:3px!important;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.maneuver-after.hidden{display:none}
+
+.replay-actions{margin-top:7px}.replay-actions .hidden{display:none}
+.replay-score{margin-top:8px;padding:8px 10px;border-radius:10px;background:#11191e;border:1px solid rgba(255,255,255,.07);font-size:9px;font-weight:850}
+.replay-score.hidden{display:none}
