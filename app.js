@@ -1595,7 +1595,7 @@ function drawEnvironment(c,w,h,hz,heading){
   for(const o of objs){
     if(["crossing","sign","stop","give_way","bollard","bench","hydrant","calming","hedge","barrier"].includes(o.kind))continue;
     const p=perspectiveEnvPoint(o.side,o.forward,w,h,hz);if(!p)continue;
-    if(o.kind==="rail"){if(drawRailGeometry(c,o,pos,heading,w,h,hz))continue}
+    if(o.kind==="rail")continue;
     if(o.kind==="parking_area"||o.kind==="pedestrian_area"){if(o.geometry&&drawUrbanGroundArea(c,o,pos,heading,w,h,hz,day))continue}
     if(o.kind==="green"||o.kind==="water"){
       if(o.geometry&&drawGroundArea(c,o,pos,heading,w,h,hz,day))continue;
@@ -1721,6 +1721,7 @@ function projectGroundLine(geom,pos,heading,w,h,hz){
 function drawRoadFurniture(c,w,h,hz,heading,path,metrics){
   const pos=scenePosition();if(S.demo||!pos)return;const objs=visibleEnvironment(pos,heading,150),day=isDayScene();
   for(const o of objs){
+    if(o.kind==="rail"){drawRailGeometry(c,o,pos,heading,w,h,hz);continue}
     if(o.kind==="hedge"||o.kind==="barrier"){
       const pts=projectGroundLine(o.geometry,pos,heading,w,h,hz);if(pts.length<2)continue;
       drawPathLine(c,pts,o.kind==="hedge"?(day?"#496d52":"#304b38"):(day?"#777d80":"#454c50"),o.kind==="hedge"?3:1.6);continue
