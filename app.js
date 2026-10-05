@@ -228,8 +228,8 @@ function buildRoadJunctions(roads){
     const branches=[];
     for(const link of n.links){
       const c=link.road.coords,i=link.index;
-      if(i>0)branches.push({bearing:bearing(n,c[i-1]),road:link.road});
-      if(i<c.length-1)branches.push({bearing:bearing(n,c[i+1]),road:link.road})
+      if(i>0)branches.push({bearing:bearing(n,c[i-1]),road:link.road,index:i,step:-1});
+      if(i<c.length-1)branches.push({bearing:bearing(n,c[i+1]),road:link.road,index:i,step:1})
     }
     out.push({id:n.id,lat:n.lat,lon:n.lon,ways:unique.length,branches})
   }
@@ -1604,20 +1604,33 @@ function drawRouteIntersections(c,w,h,hz,heading,path,metrics){
     })
   }
 }
+function branchGeometry(j,branch,maxM=72){
+  const c=branch.road?.coords||[],idx=branch.index,step=branch.step;if(!Number.isFinite(idx)||!step||!c.length)return[];
+  const out=[{lat:j.lat,lon:j.lon}];let dist=0,prev=out[0];
+  for(let k=idx+step;k>=0&&k<c.length;k+=step){dist+=haversineM(prev,c[k]);out.push(c[k]);prev=c[k];if(dist>=maxM||out.length>18)break}
+  return out
+}
+function drawProjectedBranch(c,points,pos,heading,w,h,hz,widthM,day,highlight=false){
+  if(points.length<2)return;
+  for(let i=0;i<points.length-1;i++){
+    const a=geoToLocal(pos,heading,points[i]),b=geoToLocal(pos,heading,points[i+1]);if(a.forward<3&&b.forward<3)continue;if(Math.abs(a.side)>180&&Math.abs(b.side)>180)continue;
+    const pa=roadScreenPoint(a,w,h,hz),pb=roadScreenPoint(b,w,h,hz),lw=clamp(widthM*(pa.ppm+pb.ppm)/2,5,46);
+    c.save();c.strokeStyle=highlight?"rgba(49,73,63,.98)":day?"#373c3e":"#181e21";c.lineWidth=lw;c.lineCap="round";c.lineJoin="round";c.beginPath();c.moveTo(pa.x,pa.y);c.lineTo(pb.x,pb.y);c.stroke();
+    c.strokeStyle=highlight?"rgba(70,240,145,.76)":day?"rgba(235,238,238,.36)":"rgba(210,218,222,.28)";c.lineWidth=highlight?Math.max(2,lw*.08):Math.max(1,lw*.035);c.setLineDash(highlight?[8,6]:[7,9]);c.beginPath();c.moveTo(pa.x,pa.y);c.lineTo(pb.x,pb.y);c.stroke();c.restore()
+  }
+}
 function drawMappedJunctions(c,w,h,hz,heading,path,metrics){
   const pos=scenePosition();if(S.demo||!pos||!S.junctions.length)return;const candidates=[];
   for(const j of S.junctions){
-    const local=geoToLocal(pos,heading,j);if(local.forward<18||local.forward>165||Math.abs(local.side)>50)continue;
-    const rp=S.routeCoords.length?routeProjection(j,S.lastRouteAlong):null;if(S.routeCoords.length&&rp&&rp.distance>30)continue;candidates.push({...j,local})
+    const local=geoToLocal(pos,heading,j);if(local.forward<18||local.forward>170||Math.abs(local.side)>55)continue;
+    const rp=S.routeCoords.length?routeProjection(j,S.lastRouteAlong):null;if(S.routeCoords.length&&rp&&rp.distance>32)continue;candidates.push({...j,local})
   }
   candidates.sort((a,b)=>b.local.forward-a.local.forward);
   for(const j of candidates.slice(0,S.scene3d.quality==="LOW"?3:6)){
-    const p=screenAtForward(path,j.local.forward,w,h,hz);
     for(const branch of j.branches){
-      const rel=signedAngle(heading,branch.bearing);if(Math.abs(rel)<28||Math.abs(rel)>152)continue;
-      const dir=rel>0?1:-1,branchM=roadApproxWidthM(branch.road.tags),th=clamp(branchM*p.ppm,7,44),edge=dir>0?p.x+metrics.driveMax*p.ppm:p.x+metrics.driveMin*p.ppm,span=dir>0?w-edge:edge;
-      c.save();c.strokeStyle=isDayScene()?"#373c3e":"#181e21";c.lineWidth=th;c.lineCap="butt";c.beginPath();c.moveTo(edge,p.y);c.lineTo(dir>0?edge+span:edge-span,p.y);c.stroke();
-      c.strokeStyle=isDayScene()?"rgba(242,244,244,.62)":"rgba(220,225,228,.55)";c.lineWidth=1;c.beginPath();c.moveTo(edge,p.y-th/2);c.lineTo(dir>0?w:0,p.y-th/2);c.moveTo(edge,p.y+th/2);c.lineTo(dir>0?w:0,p.y+th/2);c.stroke();c.restore()
+      const rel=signedAngle(heading,branch.bearing);if(Math.abs(rel)<24||Math.abs(rel)>158)continue;
+      const geom=branchGeometry(j,branch,S.scene3d.quality==="HIGH"?82:58),width=roadApproxWidthM(branch.road.tags);
+      if(geom.length>1)drawProjectedBranch(c,geom,pos,heading,w,h,hz,width,isDayScene(),false)
     }
   }
 }
