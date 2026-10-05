@@ -187,11 +187,11 @@ async function loadEnvironmentData(lat,lon){
     for(const e of data.elements||[]){const o=environmentObject(e);if(o)objects.push(o)}
     objects.sort((a,b)=>haversineM({lat,lon},a)-haversineM({lat,lon},b));S.environment=objects.slice(0,650);S.sceneEnvCache=null;
     try{localStorage.setItem("mdEnvCacheV1",JSON.stringify({lat,lon,time:Date.now(),objects:S.environment}))}catch(_){}
-    if($("envBadge"))$("envBadge").textContent=`URBAIN ${S.environment.length}`
+    if($("envBadge"))$("envBadge").textContent=`3D ${S.scene3d.quality} · ${S.environment.length} OBJ`
   }catch(e){
     let used=false;
     try{const cache=JSON.parse(localStorage.getItem("mdEnvCacheV1")||"null");if(cache&&Date.now()-cache.time<86400000&&haversineM({lat,lon},cache)<2500){S.environment=cache.objects||[];S.sceneEnvCache=null;S.environmentCenter={lat:cache.lat,lon:cache.lon};used=true}}catch(_){}
-    if($("envBadge"))$("envBadge").textContent=used?`CACHE ${S.environment.length}`:"URBAIN —"
+    if($("envBadge"))$("envBadge").textContent=used?`3D ${S.scene3d.quality} · CACHE ${S.environment.length}`:"3D · URBAIN —"
   }finally{S.environmentLoading=false}
 }
 function signedAngle(from,to){return((to-from+540)%360)-180}
