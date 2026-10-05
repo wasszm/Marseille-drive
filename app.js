@@ -998,7 +998,7 @@ function markLaneTruth(index){
   const ev={
     t:new Date().toISOString(),lane:index,total:S.lastLane.total,
     predicted:S.lastLane.index,confidence:S.lastLane.confidence,
-    matchQuality:S.lastMatch?.quality??0,matchDistanceM:S.lastMatch?+S.lastMatch.distance.toFixed(2):null,
+    matchQuality:S.lastMatch?.quality??0,matchDistanceM:S.lastMatch?+S.lastMatch.distance.toFixed(2):null,routeFilterQuality:S.routeFilter.quality,routeAmbiguity:S.routeFilter.ambiguity,sensorHealth:{...S.sensorHealth},transition:S.lastLane.transition||null,
     gpsAccuracy:S.rawGps?.accuracy??S.gps.accuracy,
     vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary}:null,calibration:S.lastLane.calibration||null,
     road:S.lastMatch?roadName(S.lastMatch.road):null,wayId:S.lastMatch?.road?.id||null,lat:S.gps.lat,lon:S.gps.lon
@@ -1017,17 +1017,21 @@ function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav
 function recordSample(){
   if(!S.recording||!S.gps)return;
   const now=Date.now();if(now-S.lastTrackAt<900)return;S.lastTrackAt=now;
-  const m=S.lastMatch,l=S.lastLane,n=S.lastNav;
+  const m=S.lastMatch,l=S.lastLane,n=S.lastNav,plan=l&&n?routeLaneStrategy(l,n):null;
   S.track.push({
     t:new Date(now).toISOString(),
-    gps:{lat:S.gps.lat,lon:S.gps.lon,accuracy:S.rawGps?.accuracy??S.gps.accuracy,speedKph:+((S.gps.speedMps||0)*3.6).toFixed(1),heading:+(S.gps.heading||0).toFixed(1)},
+    gps:{lat:S.gps.lat,lon:S.gps.lon,accuracy:S.rawGps?.accuracy??S.gps.accuracy,speedKph:+((S.gps.speedMps||0)*3.6).toFixed(1),heading:+(S.gps.heading||0).toFixed(1),rejected:Boolean(S.rawGps?.rejected)},
     raw:S.rawGps?{lat:S.rawGps.lat,lon:S.rawGps.lon}:null,
+    sensors:{...S.sensorHealth},
     match:m?{distanceM:+m.distance.toFixed(2),quality:m.quality??0,score:+m.score.toFixed(2),road:roadName(m.road),wayId:m.road.id}:null,
-    lane:l?{index:l.index,total:l.total,confidence:l.confidence,belief:l.belief||null,beliefTop:l.beliefTop??null,beliefGap:l.beliefGap??null,lateralM:Number.isFinite(l.lateralM)?+l.lateralM.toFixed(2):null}:null,
-    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),gpsRejected:S.gpsRejected},vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY,exposure:S.visionCue.exposure,lowLight:S.visionCue.lowLight}:null
+    lane:l?{index:l.index,total:l.total,confidence:l.confidence,belief:l.belief||null,beliefTop:l.beliefTop??null,beliefGap:l.beliefGap??null,lateralM:Number.isFinite(l.lateralM)?+l.lateralM.toFixed(2):null,lateralRawM:Number.isFinite(l.lateralRawM)?+l.lateralRawM.toFixed(2):null,transition:l.transition||null,calibration:l.calibration||null}:null,
+    lanePlan:plan?{target:plan.target,next:plan.next,compatible:plan.compatible,source:plan.source,strategic:plan.strategic,tight:plan.tight,budget:plan.budget,hintDistance:plan.hintDistance}:null,
+    route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,
+    routeFilter:S.routeCoords.length?{along:Number.isFinite(S.routeFilter.along)?+S.routeFilter.along.toFixed(2):null,quality:S.routeFilter.quality,ambiguity:+(S.routeFilter.ambiguity||0).toFixed(3),candidates:S.routeFilter.candidates}:null,
+    fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),gpsRejected:S.gpsRejected},
+    vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY,exposure:S.visionCue.exposure,lowLight:S.visionCue.lowLight}:null
   });
-  $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;
-  $("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
+  $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;$("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
 }
 function toggleRecording(){
   if(S.recording){
@@ -1055,7 +1059,7 @@ function calibrationSummary(){
 }
 function exportTrack(){
   if(!S.track.length&&!S.truthEvents.length)return;
-  const payload={app:"Marseille Drive",version:"BETA 9",exportedAt:new Date().toISOString(),summary:calibrationSummary(),points:S.track,truthEvents:S.truthEvents,destination:S.destination?{...S.destination,label:S.destinationLabel||null}:null,route:S.route?{distance:S.route.distance,duration:S.route.duration,geometry:S.route.geometry,legs:S.route.legs}:null};
+  const payload={app:"Marseille Drive",version:"BETA 10",exportedAt:new Date().toISOString(),summary:calibrationSummary(),meta:{language:navigator.language||"fr",screen:{w:window.innerWidth||null,h:window.innerHeight||null,dpr:devicePixelRatio||1},prefetchPacks:S.aheadPrefetch.count||0},points:S.track,truthEvents:S.truthEvents,replayResults:S.replayResults.length?S.replayResults:null,destination:S.destination?{...S.destination,label:S.destinationLabel||null}:null,route:S.route?{distance:S.route.distance,duration:S.route.duration,geometry:S.route.geometry,legs:S.route.legs}:null};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download=`marseille-drive-trace-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)
 }
