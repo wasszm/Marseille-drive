@@ -582,6 +582,14 @@ function updateUi(pos){
     updateSpeedLimit(null,pos);$("junctionAssist").classList.add("hidden");updateManeuverHud(nav);updateFusionBadge(navPos,null);updateBeliefHud(S.lastLane);updateDiagnostics(navPos,null,S.lastLane,nav);
     draw3D(currentDrawState());return
   }
+  if(!observed&&m){
+    updateFusionState(pos,null,S.lastLane,null);
+    const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null,sig=relevantSignal(navPos,m);S.lastNav=nav;S.lastSignal=sig;
+    if(S.lastLane)S.lastLane={...S.lastLane,confidence:Math.max(0,S.lastLane.confidence-6),reason:"Voie maintenue par mémoire courte"};
+    $("road").textContent=roadName(m.road);$("lane").textContent=S.lastLane?.index?`${S.lastLane.index}/${S.lastLane.total}`:"—";$("confidence").textContent=S.lastLane?`${S.lastLane.confidence}%`:"—";$("signal").textContent=sig?`${Math.round(sig.distance)} m`:"—";
+    $("source").textContent="PRÉDICTIF";$("advice").textContent="Position et voie maintenues temporairement · attente GPS";
+    updateSpeedLimit(m,pos);updateManeuverHud(nav);updateFusionBadge(navPos,m);updateBeliefHud(S.lastLane);updateDiagnostics(navPos,m,S.lastLane,nav);draw3D(currentDrawState());return
+  }
   const rawLane=fuseLaneWithVision(estimateLane(m,pos)),lane=stabilizeLane(updateLaneBelief(rawLane,m),m);S.lastLane=lane;
   updateFusionState(pos,observed||m,lane,null);
   const navPos=fusionPosition()||pos,nav=S.route?nextInstruction(navPos):null,sig=relevantSignal(navPos,m);S.lastNav=nav;S.lastSignal=sig;
