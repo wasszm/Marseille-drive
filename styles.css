@@ -80,3 +80,6 @@ body.drive-mode .topbar{background:rgba(7,12,16,.76)}
   body.drive-mode .instruction{font-size:17px}
   .toolbar .tool{padding-top:6px;padding-bottom:6px}
 }
+
+.user-dot{transition:transform .25s linear;transform-origin:center}
+.user-dot:after{content:"";position:absolute;left:50%;top:-10px;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid #1d79ff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
