@@ -2,7 +2,7 @@
 "use strict";
 const PILOT={lat:43.2858,lon:5.4140};
 const CFG={laneWidthM:3.2,maxRoadDistanceM:45,queryRadiusKm:1.25,reloadAfterM:700,offRouteM:42,rerouteCooldownMs:12000,overpass:["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter"],router:"https://router.project-osrm.org/route/v1/driving"};
-const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,gpsDiagnostics:{history:[],multipath:0,jitterEvents:0,roadSwitches:0},visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionStableFrames:0,visionCalibration:{samples:[],biasM:0,mad:99,active:false},compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayClock:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
+const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGps:null,lastRawFix:null,lastAcceptedRaw:null,gpsRejected:0,gpsDiagnostics:{history:[],multipath:0,jitterEvents:0,roadSwitches:0},visualGps:null,heading:0,gpsWatch:null,renderRaf:null,lastRenderAt:0,lastHudAt:0,visualTickAt:0,areaCenter:null,environmentCenter:null,roadLoading:false,environmentLoading:false,aheadPrefetch:{lastAt:0,center:null,loading:false,count:0},sceneEnvCache:null,userMarker:null,accuracyCircle:null,laneLayer:null,targetLaneLayer:null,laneOverlayKey:null,destinationMarker:null,destination:null,route:null,routeLoading:false,routeLayer:null,routeCoords:[],routeCum:[],routeLengthM:0,routeManeuvers:[],routeLaneHints:[],routeIntersections:[],lastRouteAlong:null,routeFilter:{along:null,index:null,quality:0,ambiguity:1,candidates:[],lastAt:0},view:"map",followMap:true,demo:false,demoT:0,demoTimer:null,visionStream:null,visionTimer:null,visionCue:null,visionSignalCue:null,visionStableFrames:0,visionCalibration:{samples:[],biasM:0,mad:99,active:false},compassHeading:null,compassActive:false,lastMatch:null,lastGoodMatch:null,lastGoodMatchAt:0,previousMatch:null,matchQuality:0,lastSignal:null,lastLane:null,lastNav:null,lastRerouteAt:0,lastRouteAttemptAt:0,offRouteHits:0,arrived:false,recording:false,track:[],lastTrackAt:0,truthEvents:[],currentTruth:null,replayActive:false,replayTimer:null,replayClock:null,replayPoints:[],replayIndex:0,replayTruthByIndex:null,replayResults:[],searchMarker:null,destinationLabel:null,voiceEnabled:false,lastVoiceKey:"",statusTimer:null,
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
@@ -1071,7 +1071,7 @@ function updateDiagnostics(pos=S.gps,m=S.lastMatch,lane=S.lastLane,nav=S.lastNav
   $("diagHeading").textContent=pos?`${Math.round(pos.heading||0)}°`:"—";
   $("diagLane").textContent=lane?(lane.index?`${lane.index}/${lane.total} · ${lane.confidence}%${S.laneTransition.state!=="STABLE"?` · ${S.laneTransition.state}`:""}`:(lane.total?`?/${lane.total} · ${lane.confidence}%`:"—")):"—";
   $("diagRoute").textContent=nav&&Number.isFinite(nav.offRoute)?`${nav.offRoute.toFixed(1)} m écart`:(S.route?"sur route":"—");
-  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}${S.visionCalibration.active?` · CAL ${visionCalibrationBias()>=0?"+":""}${visionCalibrationBias().toFixed(1)}m`:""}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";renderTruthButtons(lane);
+  $("diagEnv").textContent=`${S.environment.length} objets`;$("diagVision").textContent=S.visionCue?`${S.visionCue.confidence}% · ${S.visionCue.alignment?"alignée":"à aligner"}${S.visionCalibration.active?` · CAL ${visionCalibrationBias()>=0?"+":""}${visionCalibrationBias().toFixed(1)}m`:""}`:"—";$("diagTruth").textContent=S.currentTruth&&lane?`voie ${S.currentTruth}/${lane.total}`:"—";$("diagFusion").textContent=`${S.fusion.mode} · Q${Math.round(S.fusion.quality||0)}`;$("diagRejected").textContent=String(S.gpsRejected||0);$("diagSensors").textContent=`${S.sensorHealth.label} · ${S.sensorHealth.overall}%`;$("diagRouteFilter").textContent=S.routeCoords.length?`Q${Math.round(S.routeFilter.quality||0)} · amb ${Math.round((S.routeFilter.ambiguity||0)*100)}%`:"—";$("diagVisionSignal").textContent=S.visionSignalCue?`${S.visionSignalCue.type} ? · ${S.visionSignalCue.confidence}% EXP`:"—";renderTruthButtons(lane);
 }
 function recordSample(){
   if(!S.recording||!S.gps)return;
@@ -1088,7 +1088,7 @@ function recordSample(){
     route:n?{offRouteM:Number.isFinite(n.offRoute)?+n.offRoute.toFixed(2):null,nextM:Number.isFinite(n.distance)?Math.round(n.distance):null,turn:n.turn}:null,
     routeFilter:S.routeCoords.length?{along:Number.isFinite(S.routeFilter.along)?+S.routeFilter.along.toFixed(2):null,quality:S.routeFilter.quality,ambiguity:+(S.routeFilter.ambiguity||0).toFixed(3),candidates:S.routeFilter.candidates}:null,
     fusion:{mode:S.fusion.mode,quality:Math.round(S.fusion.quality||0),along:Number.isFinite(S.fusion.along)?+S.fusion.along.toFixed(2):null,lateralM:+(S.fusion.lateralM||0).toFixed(2),speedMps:+(S.fusion.speedMps||0).toFixed(2),accelerationMps2:+(S.fusion.accelerationMps2||0).toFixed(2),gpsRejected:S.gpsRejected},
-    vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY,exposure:S.visionCue.exposure,lowLight:S.visionCue.lowLight,lateralM:S.visionCue.lateralM,cameraBiasM:visionCalibrationBias(),cameraCalibrated:S.visionCalibration.active}:null
+    vision:S.visionCue?{confidence:S.visionCue.confidence,valid:S.visionCue.valid,offsetNorm:S.visionCue.offsetNorm,nearBoundary:S.visionCue.nearBoundary,stable:S.visionCue.stable,alignment:S.visionCue.alignment,yawNorm:S.visionCue.yawNorm,vanishX:S.visionCue.vanishX,vanishY:S.visionCue.vanishY,exposure:S.visionCue.exposure,lowLight:S.visionCue.lowLight,lateralM:S.visionCue.lateralM,cameraBiasM:visionCalibrationBias(),cameraCalibrated:S.visionCalibration.active,signalCandidate:S.visionSignalCue?{type:S.visionSignalCue.type,confidence:S.visionSignalCue.confidence,distance:S.visionSignalCue.distance}:null}:null
   });
   $("recordBtn").textContent=`■ Arrêter (${S.track.length})`;$("exportBtn").disabled=S.track.length===0&&S.truthEvents.length===0
 }
@@ -1252,6 +1252,31 @@ function fuseLaneWithVision(lane){
   else if(v.nearBoundary){confidence=clamp(confidence-3,0,100);reason+=" + proche marquage";visionAssist=true}
   return{...lane,confidence,visionAssist,visionOffset:v.offsetNorm}
 }
+function signalColorPredicate(img,i,type){
+  const r=img[i],g=img[i+1],b=img[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx-mn;if(mx<125||sat<55)return false;
+  return type==="RED"?r>g*1.38&&r>b*1.28:g>r*1.22&&g>b*1.12
+}
+function largestSignalBlob(img,W,H,type){
+  const seen=new Uint8Array(W*H),x0=Math.floor(W*.18),x1=Math.ceil(W*.82),y0=4,y1=Math.floor(H*.56);let best=null;
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const idx=y*W+x;if(seen[idx]||!signalColorPredicate(img,idx*4,type))continue;
+    const stack=[idx];seen[idx]=1;let n=0,sx=0,sy=0,minX=x,maxX=x,minY=y,maxY=y;
+    while(stack.length&&n<260){
+      const q=stack.pop(),qy=Math.floor(q/W),qx=q-qy*W;n++;sx+=qx;sy+=qy;minX=Math.min(minX,qx);maxX=Math.max(maxX,qx);minY=Math.min(minY,qy);maxY=Math.max(maxY,qy);
+      for(let yy=Math.max(y0,qy-1);yy<=Math.min(y1-1,qy+1);yy++)for(let xx=Math.max(x0,qx-1);xx<=Math.min(x1-1,qx+1);xx++){const ni=yy*W+xx;if(!seen[ni]&&signalColorPredicate(img,ni*4,type)){seen[ni]=1;stack.push(ni)}}
+    }
+    const bw=maxX-minX+1,bh=maxY-minY+1,aspect=bw/bh;if(n<3||bw>16||bh>16||aspect<.35||aspect>2.8)continue;
+    const score=n-Math.abs(bw-bh)*1.4;if(!best||score>best.score)best={type,pixels:n,x:sx/n,y:sy/n,w:bw,h:bh,score}
+  }
+  return best
+}
+function detectVisionSignal(img,W,H){
+  const mapped=S.lastSignal;if(!mapped||!Number.isFinite(mapped.distance)||mapped.distance<6||mapped.distance>140)return null;
+  const red=largestSignalBlob(img,W,H,"RED"),green=largestSignalBlob(img,W,H,"GREEN"),best=!red?green:!green?red:(red.score>=green.score?red:green);
+  if(!best||best.score<2.5)return null;
+  const confidence=Math.round(clamp(32+best.pixels*4-Math.abs(best.w-best.h)*4,0,72));
+  if(confidence<40)return null;return{...best,confidence,distance:mapped.distance,experimental:true}
+}
 function analyzeVisionFrame(){
   const v=$("camera"),overlay=$("visionOverlay");if(!S.visionStream||v.readyState<2)return;
   const W=160,H=96,work=S.visionWork||(S.visionWork=document.createElement("canvas"));work.width=W;work.height=H;
@@ -1275,7 +1300,7 @@ function analyzeVisionFrame(){
   }
   const pointConf=clamp(Math.min(left.length,right.length)/20*100,0,100),cue=visionLaneCue(left,right,W,H,pointConf);
   if(cue.valid&&cue.alignment&&cue.confidence>=65)S.visionStableFrames=Math.min(20,S.visionStableFrames+1);else S.visionStableFrames=Math.max(0,S.visionStableFrames-1);
-  S.visionCue={...cue,left,right,stable:S.visionStableFrames>=3,exposure:Math.round(avgLum),lowLight:avgLum<72};
+  S.visionCue={...cue,left,right,stable:S.visionStableFrames>=3,exposure:Math.round(avgLum),lowLight:avgLum<72};S.visionSignalCue=detectVisionSignal(img,W,H);
   const rect=v.getBoundingClientRect(),D=devicePixelRatio||1;overlay.width=Math.max(1,Math.round(rect.width*D));overlay.height=Math.max(1,Math.round(rect.height*D));
   const c=overlay.getContext("2d");c.setTransform(D,0,0,D,0,0);c.clearRect(0,0,rect.width,rect.height);
   const sx=rect.width/W,sy=rect.height/H;
@@ -1283,6 +1308,7 @@ function analyzeVisionFrame(){
   drawFit(cue.leftFit);drawFit(cue.rightFit);
   c.strokeStyle=cue.nearBoundary?"rgba(255,195,70,.9)":"rgba(255,255,255,.28)";c.lineWidth=2;c.beginPath();c.moveTo(rect.width*.5,rect.height*.49);c.lineTo(rect.width*.5,rect.height*.96);c.stroke();
   if(Number.isFinite(cue.vanishX)&&Number.isFinite(cue.vanishY)){c.fillStyle=cue.alignment?"rgba(80,240,160,.95)":"rgba(255,175,65,.95)";c.beginPath();c.arc(cue.vanishX*sx,cue.vanishY*sy,4,0,Math.PI*2);c.fill()}
+  if(S.visionSignalCue){const z=S.visionSignalCue;c.save();c.strokeStyle=z.type==="RED"?"rgba(255,100,100,.9)":"rgba(100,255,150,.9)";c.lineWidth=2;c.beginPath();c.arc(z.x*sx,z.y*sy,Math.max(5,z.w*sx*.8),0,Math.PI*2);c.stroke();c.fillStyle="#fff";c.font="800 7px -apple-system,Arial";c.textAlign="center";c.fillText(`CANDIDAT ${z.type} · EXP`,z.x*sx,Math.max(8,z.y*sy-8));c.restore()}
   const state=!cue.alignment?"caméra à aligner":cue.valid?(cue.nearBoundary?"proche marquage":"centrage voie"):"repères incomplets";
   $("visionStatus").textContent=`Vision ${cue.confidence}% · ${state}${avgLum<72?" · faible lumière":""} · fusion prudente`;
   updateDiagnostics()
@@ -1306,7 +1332,7 @@ async function toggleVision(){
   }catch(e){setStatus("Caméra : autorisation refusée ou indisponible.")}
 }
 function closeVision(){
-  clearInterval(S.visionTimer);S.visionTimer=null;S.visionCue=null;S.visionStream?.getTracks().forEach(t=>t.stop());S.visionStream=null;
+  clearInterval(S.visionTimer);S.visionTimer=null;S.visionCue=null;S.visionSignalCue=null;S.visionStream?.getTracks().forEach(t=>t.stop());S.visionStream=null;
   $("visionPanel").classList.add("hidden");$("visionBtn").classList.remove("active");const c=$("visionOverlay");c.getContext("2d")?.clearRect(0,0,c.width,c.height)
 }
 function startDemo(){if(S.demo){S.demo=false;clearInterval(S.demoTimer);S.demoTimer=null;$("demoBtn").querySelector("span").textContent="Démo";setStatus(S.gps?"GPS réel":"Démo arrêtée");if(S.gps)updateUi(S.gps);return}S.demo=true;S.demoT=0;setView("drive");$("demoBtn").querySelector("span").textContent="Pause";$("source").textContent="SIMULATION";setStatus("MODE DÉMO — données simulées");S.demoTimer=setInterval(()=>{S.demoT+=.1;if(S.demoT>24)S.demoT=0;const t=S.demoT,change=t>7&&t<15,lane=t>=15?3:2,recommended=change?3:lane,turn=t>7?"right":"through",signal=18-(t%18),distance=Math.max(0,460-t*17),progress=clamp(t/24,0,1);$("speed").textContent=Math.round(48+Math.sin(t*.8)*2);$("lane").textContent=`${lane}/3`;$("confidence").textContent="96%";$("road").textContent="Avenue pilote";$("signal").textContent=`${Math.ceil(signal)} s*`;$("limitBadge").textContent="50";$("limitBadge").classList.remove("hidden");$("instruction").textContent=change?"Change de voie":turn==="right"?"Tourne à droite":"Continue tout droit";$("detail").textContent=`Dans ${Math.round(distance)} m · feu SIMULÉ`;$("advice").textContent=recommended===lane?`🟢 RESTE VOIE ${lane}/3`:`➡️ ${distance>120?"REJOINS":"MAINTENANT"} VOIE ${recommended}/3`;$("routeTitle").textContent="Itinéraire de démonstration";$("routeMeta").textContent=`${Math.max(0,(3.2*(1-progress))).toFixed(1)} km restants`;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${progress*100}%`;const demoNav={instruction:turn==="right"?"Tourne à droite":"Continue tout droit",turn,distance,arrived:false};updateJunctionAssist({total:3,index:lane,hasTurnLanes:true,turns:["through","through","right"]},demoNav);updateManeuverHud(demoNav);$("fusionBadge").textContent="SIMULATION · MATCH 100";draw3D({lane,total:3,current:lane,recommended,compatible:turn==="right"?[3]:[1,2,3],turn,signal,distance,demo:true})},100)}
