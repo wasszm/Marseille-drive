@@ -85,7 +85,19 @@ function laneRoutePlan(lane,turn){
 function maxspeedKph(tags){const raw=String(tags?.maxspeed||"").trim().toLowerCase();if(!raw)return null;const n=parseFloat(raw);if(Number.isFinite(n))return Math.round(raw.includes("mph")?n*1.60934:n);return({"fr:urban":50,"fr:rural":80,"fr:trunk":110,"fr:motorway":130})[raw]||null}
 function updateSpeedLimit(match,pos){const el=$("limitBadge"),limit=match?maxspeedKph(match.road.tags):null;if(!limit){el.classList.add("hidden");el.classList.remove("alert");return}el.textContent=String(limit);el.classList.remove("hidden");el.classList.toggle("alert",pos.speedMps*3.6>limit+5)}
 function turnGlyph(raw){const vals=String(raw||"through").split(";").map(v=>v.trim());const glyph=v=>v.includes("uturn")||v.includes("reverse")?"↶":v.includes("left")?"↰":v.includes("right")?"↱":"↑";return [...new Set(vals.map(glyph))].join("")}
-function updateJunctionAssist(lane,nav){const panel=$("junctionAssist");if(!nav||nav.arrived||!Number.isFinite(nav.distance)||nav.distance>500){panel.classList.add("hidden");return}panel.classList.remove("hidden");$("junctionText").textContent=`${nav.instruction} · ${Math.max(0,Math.round(nav.distance))} m`;const lanes=$("junctionLanes");if(lane.hasTurnLanes&&lane.turns.length){const good=compatibleLanes(lane,nav.turn);lanes.innerHTML=lane.turns.map((t,i)=>`<span class="${good.includes(i+1)?"recommended":""}">${turnGlyph(t)}</span>`).join("")}else{lanes.innerHTML='<small>Voies directionnelles non renseignées sur cette section</small>'}}
+function updateJunctionAssist(lane,nav){
+  const panel=$("junctionAssist");if(!nav||nav.arrived||!Number.isFinite(nav.distance)||nav.distance>650){panel.classList.add("hidden");return}
+  panel.classList.remove("hidden");const plan=routeLaneStrategy(lane,nav),suffix=plan.source&&plan.source!=="OSM"?` · ${plan.source}`:"";
+  $("junctionText").textContent=`${nav.instruction} · ${Math.max(0,Math.round(nav.distance))} m${suffix}`;
+  const lanes=$("junctionLanes"),hint=plan.hint&&plan.hint.total===lane.total?plan.hint:null;
+  if(lane.total&&(lane.hasTurnLanes||hint)){
+    const good=plan.compatible||[];
+    lanes.innerHTML=Array.from({length:lane.total},(_,i)=>{
+      const idx=i+1,raw=lane.turns?.[i]||hint?.lanes?.[i]?.indications?.join(";")||"through",restricted=lane.accessible?.[i]===false;
+      return `<span class="${good.includes(idx)?"recommended":""} ${restricted?"restricted":""}">${turnGlyph(raw)}</span>`
+    }).join("")
+  }else lanes.innerHTML='<small>Voies directionnelles non renseignées sur cette section</small>'
+}
 function envHeight(tags){const h=parseFloat(String(tags?.height||"").replace(",",".") );if(Number.isFinite(h)&&h>1)return clamp(h,3,60);const levels=parseFloat(tags?.["building:levels"]);return clamp(Number.isFinite(levels)&&levels>0?levels*3.1:10,3,45)}
 function envKind(tags){
   if(tags?.building)return"building";
@@ -629,7 +641,7 @@ function nextInstruction(pos){
   for(let i=candidateIndex+1;i<S.routeManeuvers.length;i++){
     const m=S.routeManeuvers[i];if(m.type==="depart"||m.type==="arrive")continue;
     const delta=m.along-candidate.along;if(delta>650)break;
-    if(delta>18){after={instruction:maneuverInstruction(m,maneuverTurn(m)),distance:delta,road:m.step.name||""};break}
+    if(delta>18){after={instruction:maneuverInstruction(m,maneuverTurn(m)),turn:maneuverTurn(m),distance:delta,road:m.step.name||""};break}
   }
   return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,after,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
 }
@@ -639,22 +651,58 @@ function compatibleLanes(lane,turn){
   lane.turns.forEach((raw,i)=>{if(access[i]===false)return;const vals=raw.split(";").map(v=>v.trim());if(vals.includes(desired)||(desired==="through"&&(vals.includes("through")||vals.includes("straight"))))out.push(i+1)});
   return out
 }
+function indicationFitsTurn(indications,turn){
+  const vals=indications?.length?indications:["through"];
+  if(turn==="left")return vals.some(v=>v==="left"||v==="slight_left"||v==="sharp_left");
+  if(turn==="right")return vals.some(v=>v==="right"||v==="slight_right"||v==="sharp_right");
+  if(turn==="uturn")return vals.includes("uturn");
+  if(turn==="roundabout")return true;
+  return vals.some(v=>v==="through")
+}
+function osrmCompatibleLanes(hint,turn){
+  if(!hint?.lanes?.length)return[];
+  let out=hint.lanes.filter(l=>l.valid&&indicationFitsTurn(l.indications,turn)).map(l=>l.index);
+  if(!out.length)out=hint.lanes.filter(l=>l.valid).map(l=>l.index);
+  return out
+}
+function routeLaneStrategy(lane,nav){
+  const base=laneRoutePlan(lane,nav?.turn||"through"),along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,hint=upcomingRouteLaneHint(along,900);
+  let compatible=[...base.compatible],source="OSM",hintDistance=null;
+  if(hint&&hint.total===lane?.total){
+    const osrm=osrmCompatibleLanes(hint,nav?.turn||"through").filter(i=>lane.accessible?.[i-1]!==false),intersection=compatible.filter(i=>osrm.includes(i));
+    if(intersection.length)compatible=intersection;
+    else if(osrm.length)compatible=osrm;
+    if(osrm.length){source=base.compatible.length?"OSM + OSRM":"OSRM";hintDistance=hint.distance}
+  }
+  if(!compatible.length)return{...base,compatible,source,hint,hintDistance,target:null,next:null};
+  const current=lane?.index||null;
+  let target=current?compatible.reduce((a,b)=>Math.abs(b-current)<Math.abs(a-current)?b:a):compatible[0],strategic=false;
+  const after=nav?.after;
+  if(after&&after.distance<360&&compatible.length>1){
+    if(after.turn==="left"){target=Math.min(...compatible);strategic=true}
+    else if(after.turn==="right"){target=Math.max(...compatible);strategic=true}
+  }
+  if(!current)return{...base,compatible,target,next:target,source,hint,hintDistance,strategic};
+  if(current===target)return{...base,compatible,target,next:target,source,hint,hintDistance,strategic,blocked:false};
+  const step=current+(target>current?1:-1),legal=laneChangeAllowed(lane,current,step)&&lane.accessible?.[step-1]!==false;
+  return{...base,compatible,target,next:legal?step:current,source,hint,hintDistance,strategic,blocked:!legal}
+}
 function recommendedLane(lane,turn){
-  if(turn&&turn!=="through"&&!lane.hasTurnLanes)return null;
+  if(turn&&turn!=="through"&&!lane.hasTurnLanes&&!upcomingRouteLaneHint())return null;
   return laneRoutePlan(lane,turn).target
 }
 function adviceText(lane,nav){
   if(lane?.index&&lane.accessible?.[lane.index-1]===false)return"⚠️ VOIE CARTOGRAPHIÉE COMME RESTREINTE AUX VOITURES";
   if(!nav)return lane.index?`🟢 VOIE PROBABLE ${lane.index}/${lane.total}`:(lane.total?`🟡 ${lane.total} VOIES · POSITION INCONNUE`:"Voies non renseignées");
   if(nav.arrived)return"🏁 DESTINATION ATTEINTE";
-  if(nav.turn!=="through"&&!lane.hasTurnLanes){const dir=nav.turn==="left"?"À GAUCHE":nav.turn==="right"?"À DROITE":nav.turn==="roundabout"?"AU ROND-POINT":"POUR LA MANŒUVRE";return `↪ PRÉPARE-TOI ${dir} · VOIE NON CARTOGRAPHIÉE`}
-  const plan=laneRoutePlan(lane,nav.turn),target=plan.target,d=nav.distance??9999;
-  if(!target)return lane.total?`🟡 ${lane.total} VOIES · AUCUNE VOIE COMPATIBLE CARTOGRAPHIÉE`:"Voies non renseignées";
+  const plan=routeLaneStrategy(lane,nav),target=plan.target,d=nav.distance??9999;
+  if(nav.turn!=="through"&&!lane.hasTurnLanes&&plan.source==="OSM"&&!plan.hint){const dir=nav.turn==="left"?"À GAUCHE":nav.turn==="right"?"À DROITE":nav.turn==="roundabout"?"AU ROND-POINT":"POUR LA MANŒUVRE";return `↪ PRÉPARE-TOI ${dir} · VOIE NON CARTOGRAPHIÉE`}
+  if(!target)return lane.total?`🟡 ${lane.total} VOIES · AUCUNE VOIE COMPATIBLE CONFIRMÉE`:"Voies non renseignées";
   if(lane.index&&target!==lane.index&&plan.blocked)return"⚠️ CHANGEMENT DE VOIE CARTOGRAPHIÉ COMME INTERDIT ICI";
-  const urgency=d>350?"PRÉPARE":d>120?"REJOINS":"MAINTENANT";
-  if(lane.index&&target===lane.index)return d<120?`🟢 RESTE VOIE ${lane.index}/${lane.total}`:`🟢 BONNE VOIE ${lane.index}/${lane.total}`;
-  if(lane.index&&plan.next&&plan.next!==target)return `➡️ ${urgency} D’ABORD VOIE ${plan.next}/${lane.total} · CIBLE ${target}/${lane.total}`;
-  return lane.index?`➡️ ${urgency} VOIE ${target}/${lane.total}`:`➡️ VOIE CONSEILLÉE ${target}/${lane.total}`
+  const urgency=d>350?"PRÉPARE":d>120?"REJOINS":"MAINTENANT",tag=plan.strategic?" · ANTICIPATION":"";
+  if(lane.index&&target===lane.index)return d<120?`🟢 RESTE VOIE ${lane.index}/${lane.total}${tag}`:`🟢 BONNE VOIE ${lane.index}/${lane.total}${tag}`;
+  if(lane.index&&plan.next&&plan.next!==target)return `➡️ ${urgency} D’ABORD VOIE ${plan.next}/${lane.total} · CIBLE ${target}/${lane.total}${tag}`;
+  return lane.index?`➡️ ${urgency} VOIE ${target}/${lane.total}${tag}`:`➡️ VOIE CONSEILLÉE ${target}/${lane.total}${tag}`
 }
 function relevantSignal(pos,m){
   let best=null;
@@ -1023,8 +1071,8 @@ function advanceVisualGps(now){
   S.visualGps.heading=lerpAngle(S.visualGps.heading||target.heading,target.heading||0,a)
 }
 function currentDrawState(){
-  const lane=S.lastLane,nav=S.lastNav,pos=scenePosition();
-  const plan=nav&&lane?laneRoutePlan(lane,nav.turn):null;return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:S.lastSignal}
+  const lane=S.lastLane,nav=S.lastNav,plan=nav&&lane?routeLaneStrategy(lane,nav):null;
+  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,turn:nav?.turn||"through",distance:nav?.distance,arrived:nav?.arrived,signal:S.lastSignal}
 }
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);
