@@ -105,3 +105,5 @@ body.drive-mode #visionStatus{display:block;max-width:none}
 .truth-block>small{display:block;font-size:7px;letter-spacing:.55px;opacity:.48;margin-bottom:7px}
 .truth-lanes{display:flex;gap:6px;flex-wrap:wrap}.truth-lanes button{min-width:36px;border:1px solid rgba(255,255,255,.10);background:#11191e;color:#fff;border-radius:9px;padding:8px;font-size:10px;font-weight:900}
 .truth-lanes button.active{background:#fff;color:#111}.truth-lanes span{font-size:8px;opacity:.5}
+
+.user-dot.snapped{box-shadow:0 0 0 7px rgba(29,121,255,.12),0 0 16px rgba(29,121,255,.55)}
