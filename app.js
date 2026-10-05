@@ -236,7 +236,7 @@ function estimateLane(m,pos){
 }
 function stabilizeLane(lane,m){
   const f=S.laneFilter,roadId=m?.road?.id||null;
-  if(f.roadId!==roadId){f.roadId=roadId;f.index=null;f.candidate=null;f.hits=0}
+  if(f.roadId!==roadId){f.roadId=roadId;f.index=null;f.candidate=null;f.hits=0;S.currentTruth=null}
   if(!lane.index){f.candidate=null;f.hits=0;return lane}
   if(f.index===null){
     if(f.candidate===lane.index)f.hits++;else{f.candidate=lane.index;f.hits=1}
