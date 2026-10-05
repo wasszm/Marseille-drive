@@ -1831,6 +1831,26 @@ function guidanceOffsetAtForward(d,metrics,forward){
   if(Number.isFinite(target)&&d.target!==d.recommended){const t2=smooth(clamp((forward-changeSpan*.85)/(changeSpan*.95),0,1));off=off+(target-off)*t2}
   return off
 }
+function drawEgoMarker(c,w,h,d){
+  const x=w/2,y=h-37;c.save();c.translate(x,y);c.fillStyle="rgba(5,12,15,.74)";c.beginPath();c.arc(0,0,20,0,Math.PI*2);c.fill();
+  c.fillStyle=d.tight?"#ffb14c":"#f6f8f7";c.beginPath();c.moveTo(0,-14);c.lineTo(10,11);c.lineTo(0,7);c.lineTo(-10,11);c.closePath();c.fill();
+  c.strokeStyle="rgba(70,235,145,.8)";c.lineWidth=2;c.beginPath();c.arc(0,0,17,-Math.PI*.82,-Math.PI*.18);c.stroke();c.restore()
+}
+function drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics){
+  if(!Number.isFinite(d.distance)||d.distance<28||d.distance>230||metrics.total<2)return;
+  const hasData=(d.turns||[]).some(Boolean)||(d.destinations||[]).some(Boolean);if(!hasData)return;
+  const anchor=screenAtForward(path,clamp(d.distance,55,155),w,h,hz),panelW=Math.min(w*.78,286),panelH=56,x=clamp(anchor.x-panelW/2,8,w-panelW-8),y=clamp(anchor.y-panelH-54,hz+12,h*.53);
+  c.save();c.fillStyle="rgba(7,14,18,.82)";c.fillRect(x,y,panelW,panelH);c.strokeStyle="rgba(255,255,255,.10)";c.lineWidth=1;c.strokeRect?.(x,y,panelW,panelH);
+  const cell=panelW/metrics.total;
+  for(let i=0;i<metrics.total;i++){
+    const recommended=(i+1)===(d.recommended||0),compatible=(d.compatible||[]).includes(i+1),cx=x+cell*(i+.5),turn=laneArrowTurn(d.turns?.[i],d.turn||"through"),dest=d.destinations?.[i]||"";
+    if(recommended){c.fillStyle="rgba(58,235,139,.18)";c.fillRect(x+i*cell+2,y+2,cell-4,panelH-4)}
+    c.fillStyle=recommended?"#75f0ad":compatible?"#eaf0ed":"#8c999f";c.font="900 19px -apple-system,Arial";c.textAlign="center";c.fillText(turnHudGlyph(turn),cx,y+23);
+    c.fillStyle=recommended?"#fff":"rgba(255,255,255,.68)";c.font="800 6px -apple-system,Arial";c.fillText(dest?dest.slice(0,13):`V${i+1}`,cx,y+39);
+    if(i<metrics.total-1){c.strokeStyle="rgba(255,255,255,.07)";c.beginPath();c.moveTo(x+(i+1)*cell,y+6);c.lineTo(x+(i+1)*cell,y+panelH-6);c.stroke()}
+  }
+  c.fillStyle="rgba(255,255,255,.46)";c.font="800 6px -apple-system,Arial";c.textAlign="left";c.fillText(d.laneSource||"GUIDAGE",x+6,y+panelH-5);c.restore()
+}
 function drawLaneGuidanceRibbon(c,w,h,hz,path,d,metrics){
   if(!metrics.centers.length)return;const left=[],right=[],center=[];
   for(const q of path){
@@ -1874,7 +1894,7 @@ function draw3D(d={}){
   for(let i=1;i<total;i++){const off=metrics.ownBounds[i],style=laneBoundaryStyle(S.lastLane,i);if(style.double){drawPathLine(c,offsetScreenPath(path,off-.07,w,h,hz),"#dce1e3",1.15);drawPathLine(c,offsetScreenPath(path,off+.07,w,h,hz),"#dce1e3",1.15)}else drawPathLine(c,offsetScreenPath(path,off,w,h,hz),"#dce1e3",1.7,style.solid?[]:[10,13])}
   drawLaneGuidanceRibbon(c,w,h,hz,path,{...d,recommended:rec},metrics);
 
-  drawCrossings(c,w,h,hz,heading,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);
+  drawCrossings(c,w,h,hz,heading,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
   drawMappedSignals(c,w,h,hz,heading,path,metrics);
   drawRoadFurniture(c,w,h,hz,heading,path,metrics);
   const arrowP=screenAtForward(path,18,w,h,hz);
@@ -1884,6 +1904,7 @@ function draw3D(d={}){
   drawSceneLabels(c,w,h,hz,path,d,metrics);
   if(Number.isFinite(d.distance)){const p=screenAtForward(path,clamp(d.distance,18,190),w,h,hz);c.fillStyle="#fff";c.font="900 12px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.round(d.distance)} m`,p.x,p.y-12)}
   if(d.demo){const p=screenAtForward(path,70,w,h,hz);drawSignal(c,p,d.signal)}
+  drawEgoMarker(c,w,h,d);
   const elapsed=performance.now()-started;updateScene3dPerformance(elapsed)
 }
 function bind(){
