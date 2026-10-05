@@ -1402,7 +1402,7 @@ function advanceVisualGps(now){
 function currentDrawState(){
   const lane=S.lastLane,nav=S.lastNav,plan=nav&&lane?routeLaneStrategy(lane,nav):null,hint=plan?.hint&&plan.hint.total===lane?.total?plan.hint:null;
   const turns=lane?.hasTurnLanes?lane.turns:(hint?hint.lanes.map(l=>(l.indications?.length?l.indications.join(";"):"through")):(lane?.turns||[]));
-  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns,destinations:lane?.destinations||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
+  return{lane:lane?.index||2,total:lane?.total||3,current:lane?.index||null,recommended:plan?.next||plan?.target||(lane?.index||2),target:plan?.target||null,compatible:plan?.compatible||[],accessible:lane?.accessible||[],turns,destinations:lane?.destinations||[],laneSource:plan?.source||null,strategic:plan?.strategic||false,tight:plan?.tight||false,hintTotal:plan?.hint?.total||null,hintDistance:plan?.hintDistance??null,hintValid:plan?.hint?.lanes?.map(x=>x.valid)!==undefined?plan.hint.lanes.map(x=>x.valid):null,turn:nav?.turn||"through",distance:nav?.distance,afterTurn:nav?.after?.turn||null,afterDistance:Number.isFinite(nav?.distance)&&Number.isFinite(nav?.after?.distance)?nav.distance+nav.after.distance:null,arrived:nav?.arrived,signal:S.lastSignal}
 }
 function renderLoop(now=performance.now()){
   advanceVisualGps(now);updateScene3dCamera();
@@ -1836,6 +1836,18 @@ function drawEgoMarker(c,w,h,d){
   c.fillStyle=d.tight?"#ffb14c":"#f6f8f7";c.beginPath();c.moveTo(0,-14);c.lineTo(10,11);c.lineTo(0,7);c.lineTo(-10,11);c.closePath();c.fill();
   c.strokeStyle="rgba(70,235,145,.8)";c.lineWidth=2;c.beginPath();c.arc(0,0,17,-Math.PI*.82,-Math.PI*.18);c.stroke();c.restore()
 }
+function drawLaneCountTransition(c,w,h,hz,path,d,metrics){
+  const future=Number(d.hintTotal),current=metrics.total,distance=Number(d.hintDistance);if(!Number.isFinite(future)||!Number.isFinite(distance)||future===current||distance<28||distance>245)return;
+  const diff=future-current,side=d.turn==="left"?-1:1,startF=clamp(distance-105,18,170),endF=clamp(distance,45,235),start=screenAtForward(path,startF,w,h,hz),end=screenAtForward(path,endF,w,h,hz),base=side<0?metrics.driveMin:metrics.driveMax,delta=Math.abs(diff)*CFG.laneWidthM;
+  if(diff>0){
+    const a=[start.x+base*start.ppm,start.y],b=[end.x+base*end.ppm,end.y],c2=[end.x+(base+side*delta)*end.ppm,end.y],d2=[start.x+(base+side*.08)*start.ppm,start.y];
+    c.save();c.globalAlpha=.96;poly(c,[a,b,c2,d2],roadSurfaceColor());c.globalAlpha=1;
+    for(let k=1;k<=diff;k++){const frac=k/diff,offEnd=base+side*delta*frac;c.strokeStyle="rgba(226,232,234,.72)";c.lineWidth=1.3;c.setLineDash([7,9]);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(end.x+offEnd*end.ppm,end.y);c.stroke()}c.restore()
+  }else{
+    const count=Math.abs(diff),inner=base-side*count*CFG.laneWidthM;c.save();c.strokeStyle="rgba(235,238,238,.48)";c.lineWidth=1.2;
+    for(let k=0;k<7;k++){const t=k/7,f=startF+(endF-startF)*t,p=screenAtForward(path,f,w,h,hz),edge=base+(inner-base)*t,x1=p.x+edge*p.ppm,x2=p.x+(edge-side*CFG.laneWidthM*.7)*p.ppm;c.beginPath();c.moveTo(x1,p.y);c.lineTo(x2,p.y-2);c.stroke()}c.restore()
+  }
+}
 function drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics){
   if(!Number.isFinite(d.distance)||d.distance<28||d.distance>230||metrics.total<2)return;
   const hasData=(d.turns||[]).some(Boolean)||(d.destinations||[]).some(Boolean);if(!hasData)return;
@@ -1892,6 +1904,7 @@ function draw3D(d={}){
   const recL=metrics.ownBounds[rec-1],recR=metrics.ownBounds[rec];c.globalAlpha=.13;poly(c,[...offsetScreenPath(path,recL,w,h,hz),...offsetScreenPath(path,recR,w,h,hz).reverse()],"#38e88c");c.globalAlpha=1;
   if(Number.isFinite(metrics.dividerOffset)){const dp=offsetScreenPath(path,metrics.dividerOffset,w,h,hz),divider=String(metrics.tags.divider||"").toLowerCase(),dbl=/double/.test(divider);if(dbl){drawPathLine(c,offsetScreenPath(path,metrics.dividerOffset-.10,w,h,hz),"#f1f1f1",1.5);drawPathLine(c,offsetScreenPath(path,metrics.dividerOffset+.10,w,h,hz),"#f1f1f1",1.5)}else drawPathLine(c,dp,"#efefef",2,divider.includes("dashed")?[10,10]:[14,10])}
   for(let i=1;i<total;i++){const off=metrics.ownBounds[i],style=laneBoundaryStyle(S.lastLane,i);if(style.double){drawPathLine(c,offsetScreenPath(path,off-.07,w,h,hz),"#dce1e3",1.15);drawPathLine(c,offsetScreenPath(path,off+.07,w,h,hz),"#dce1e3",1.15)}else drawPathLine(c,offsetScreenPath(path,off,w,h,hz),"#dce1e3",1.7,style.solid?[]:[10,13])}
+  drawLaneCountTransition(c,w,h,hz,path,d,metrics);
   drawLaneGuidanceRibbon(c,w,h,hz,path,{...d,recommended:rec},metrics);
 
   drawCrossings(c,w,h,hz,heading,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
