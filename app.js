@@ -1348,7 +1348,18 @@ function closeVision(){
   clearInterval(S.visionTimer);S.visionTimer=null;S.visionCue=null;S.visionSignalCue=null;S.visionStream?.getTracks().forEach(t=>t.stop());S.visionStream=null;
   $("visionPanel").classList.add("hidden");$("visionBtn").classList.remove("active");const c=$("visionOverlay");c.getContext("2d")?.clearRect(0,0,c.width,c.height)
 }
-function startDemo(){if(S.demo){S.demo=false;clearInterval(S.demoTimer);S.demoTimer=null;$("demoBtn").querySelector("span").textContent="Démo";setStatus(S.gps?"GPS réel":"Démo arrêtée");if(S.gps)updateUi(S.gps);return}S.demo=true;S.demoT=0;setView("drive");$("demoBtn").querySelector("span").textContent="Pause";$("source").textContent="SIMULATION";setStatus("MODE DÉMO — données simulées");S.demoTimer=setInterval(()=>{S.demoT+=.1;if(S.demoT>24)S.demoT=0;const t=S.demoT,change=t>7&&t<15,lane=t>=15?3:2,recommended=change?3:lane,turn=t>7?"right":"through",signal=18-(t%18),distance=Math.max(0,460-t*17),progress=clamp(t/24,0,1);$("speed").textContent=Math.round(48+Math.sin(t*.8)*2);$("lane").textContent=`${lane}/3`;$("confidence").textContent="96%";$("road").textContent="Avenue pilote";$("signal").textContent=`${Math.ceil(signal)} s*`;$("limitBadge").textContent="50";$("limitBadge").classList.remove("hidden");$("instruction").textContent=change?"Change de voie":turn==="right"?"Tourne à droite":"Continue tout droit";$("detail").textContent=`Dans ${Math.round(distance)} m · feu SIMULÉ`;$("advice").textContent=recommended===lane?`🟢 RESTE VOIE ${lane}/3`:`➡️ ${distance>120?"REJOINS":"MAINTENANT"} VOIE ${recommended}/3`;$("routeTitle").textContent="Itinéraire de démonstration";$("routeMeta").textContent=`${Math.max(0,(3.2*(1-progress))).toFixed(1)} km restants`;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${progress*100}%`;const demoNav={instruction:turn==="right"?"Tourne à droite":"Continue tout droit",turn,distance,arrived:false};updateJunctionAssist({total:3,index:lane,hasTurnLanes:true,turns:["through","through","right"]},demoNav);updateManeuverHud(demoNav);$("fusionBadge").textContent="SIMULATION · MATCH 100";draw3D({lane,total:3,current:lane,recommended,compatible:turn==="right"?[3]:[1,2,3],turn,signal,distance,demo:true})},100)}
+function startDemo(){
+  if(S.demo){S.demo=false;clearInterval(S.demoTimer);S.demoTimer=null;$("demoBtn").querySelector("span").textContent="Démo";setStatus(S.gps?"GPS réel":"Démo arrêtée");if(S.gps)updateUi(S.gps);return}
+  S.demo=true;S.demoT=0;setView("drive");$("demoBtn").querySelector("span").textContent="Pause";$("source").textContent="SIMULATION 3D";setStatus("MODE DÉMO BETA 11 — scène 3D simulée");
+  S.demoTimer=setInterval(()=>{
+    S.demoT+=.075;if(S.demoT>24)S.demoT=0;const t=S.demoT,phase=t<6?0:t<12?1:t<18?2:3,lane=phase<2?2:3,recommended=phase===1?3:lane,target=phase===1?3:phase===2?3:2,turn=t>8?"right":"through",signal=18-(t%18),distance=Math.max(18,430-t*15),progress=clamp(t/24,0,1);
+    $("speed").textContent=Math.round(48+Math.sin(t*.8)*2);$("lane").textContent=`${lane}/3`;$("confidence").textContent="96%";$("road").textContent="Avenue 3D";$("signal").textContent=`${Math.ceil(signal)} s*`;$("limitBadge").textContent="50";$("limitBadge").classList.remove("hidden");
+    $("instruction").textContent=phase===1?"Rejoins la voie 3":turn==="right"?"Tourne à droite":"Continue tout droit";$("detail").textContent=`Dans ${Math.round(distance)} m · démonstration`;$("advice").textContent=recommended===lane?`🟢 RESTE VOIE ${lane}/3`:`➡️ REJOINS VOIE ${recommended}/3`;
+    $("routeTitle").textContent="Démonstration moteur 3D BETA 11";$("routeMeta").textContent=`${Math.max(0,(3.2*(1-progress))).toFixed(1)} km restants`;$("progressWrap").classList.remove("hidden");$("progressBar").style.width=`${progress*100}%`;
+    const demoNav={instruction:turn==="right"?"Tourne à droite":"Continue tout droit",turn,distance,arrived:false,after:{turn:"left",distance:145,instruction:"Tourne à gauche"}};updateJunctionAssist({total:3,index:lane,hasTurnLanes:true,turns:["through","through;right","right"],accessible:[true,true,true],destinations:["Centre","Vieux-Port","Autoroute"],changes:["yes","yes","yes"]},demoNav);updateManeuverHud(demoNav);$("fusionBadge").textContent=`SIMULATION · 3D ${S.scene3d.quality}`;
+    draw3D({lane,total:3,current:lane,recommended,target,compatible:turn==="right"?[2,3]:[1,2,3],accessible:[true,true,true],turns:["through","through;right","right"],destinations:["Centre","Vieux-Port","Autoroute"],turn,afterTurn:"left",afterDistance:distance+145,signal,distance,demo:true})
+  },66)
+}
 function poly(c,p,f){c.beginPath();p.forEach((x,i)=>i?c.lineTo(x[0],x[1]):c.moveTo(x[0],x[1]));c.closePath();c.fillStyle=f;c.fill()}
 function line(c,p,col,w){c.beginPath();p.forEach((x,i)=>i?c.lineTo(x[0],x[1]):c.moveTo(x[0],x[1]));c.strokeStyle=col;c.lineWidth=w;c.stroke()}
 function arrow(c,x,y,on,turn){
@@ -1484,10 +1495,17 @@ function perspectiveEnvPoint(side,forward,w,h,hz){
   return roadScreenPoint({side,forward},w,h,hz)
 }
 function drawFallbackCity(c,w,h,hz){
-  const blocks=[[-.48,.11,.16,.24],[-.30,.09,.13,.18],[-.14,.08,.11,.14],[.14,.08,.11,.15],[.30,.10,.14,.20],[.48,.12,.16,.26]];
-  for(const [sx,sw,sh,depth] of blocks){const bw=w*sw,bh=h*sh,x=w/2+w*sx-bw/2,y=hz;c.fillStyle=depth>.2?"#46545c":"#38464e";c.fillRect(x,y-bh,bw,bh);c.fillStyle="#9aa8ae";for(let r=0;r<3;r++)for(let col=0;col<2;col++)c.fillRect(x+bw*.18+col*bw*.38,y-bh*.78+r*bh*.23,Math.max(2,bw*.10),Math.max(2,bh*.07))}
-  for(let i=0;i<6;i++){const side=i<3?-1:1,k=i%3,x=w/2+side*(w*.18+k*w*.11),y=hz+28+k*18;c.strokeStyle="#68747a";c.lineWidth=2;c.beginPath();c.moveTo(x,y);c.lineTo(x,y-28-k*3);c.stroke();c.fillStyle="#dbe2c1";c.beginPath();c.arc(x,y-30-k*3,3,0,Math.PI*2);c.fill()}
-  for(let i=0;i<4;i++){const side=i<2?-1:1,k=i%2,x=w/2+side*(w*.27+k*w*.13),y=hz+55+k*35;c.strokeStyle="#314139";c.lineWidth=3;c.beginPath();c.moveTo(x,y);c.lineTo(x,y-20);c.stroke();c.fillStyle="#42604e";c.beginPath();c.arc(x,y-28,10,0,Math.PI*2);c.fill()}
+  const day=isDayScene(),rows=[
+    {f:48,s:-17,w:11,h:16},{f:60,s:18,w:10,h:20},{f:78,s:-20,w:13,h:24},{f:92,s:21,w:12,h:18},
+    {f:118,s:-22,w:14,h:28},{f:138,s:23,w:15,h:23},{f:168,s:-25,w:17,h:31},{f:196,s:27,w:18,h:26},{f:228,s:-30,w:20,h:34},{f:245,s:31,w:18,h:29}
+  ];
+  for(const [i,b] of rows.entries()){
+    const p=roadScreenPoint({side:b.s,forward:b.f},w,h,hz),bw=clamp(b.w*p.ppm,9,100),bh=clamp(b.h*p.ppm*.72,12,h*.34),fac=day?(i%3===0?"#9a8f85":"#818e92"):(i%3===0?"#504944":"#3c484e");
+    c.fillStyle=fac;c.fillRect(p.x-bw/2,p.y-bh,bw,bh);c.fillStyle=day?"#687276":"#283238";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.34,p.y-bh-4);c.lineTo(p.x+bw*.42,p.y-bh-4);c.lineTo(p.x+bw/2,p.y-bh);c.fill();
+    if(S.scene3d.buildingDetail>0&&bw>18){c.fillStyle=day?"rgba(55,73,82,.45)":"rgba(230,210,140,.28)";const cols=Math.min(4,Math.max(2,Math.floor(bw/24))),rs=Math.min(5,Math.max(2,Math.floor(bh/18)));for(let rr=1;rr<=rs;rr++)for(let cc=1;cc<=cols;cc++)c.fillRect(p.x-bw*.38+cc*(bw*.76/(cols+1))-1.5,p.y-bh+rr*(bh*.78/(rs+1)),3,2)}
+  }
+  for(let i=0;i<8;i++){const f=35+i*22,side=i%2?-12.5:12.5,p=roadScreenPoint({side,forward:f},w,h,hz),th=clamp(4.6*p.ppm,7,36),cr=clamp(1.9*p.ppm,3,10);c.strokeStyle="#324139";c.lineWidth=2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-th*.55);c.stroke();c.fillStyle=day?"#4b7658":"#385545";c.beginPath();c.arc(p.x,p.y-th*.72,cr,0,Math.PI*2);c.fill()}
+  for(let i=0;i<7;i++){const f=28+i*29,side=i%2?-9.8:9.8,p=roadScreenPoint({side,forward:f},w,h,hz),lh=clamp(5.5*p.ppm,8,42);c.strokeStyle="#6f7a80";c.lineWidth=1.2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-lh);c.stroke();c.fillStyle="#e5e5c8";c.beginPath();c.arc(p.x,p.y-lh,2,0,Math.PI*2);c.fill()}
 }
 function osmFacadeColor(tags,day){
   const raw=String(tags?.["building:colour"]||tags?.["building:color"]||"").trim();
