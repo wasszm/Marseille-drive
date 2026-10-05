@@ -774,6 +774,11 @@ function upcomingRouteLaneHint(along=S.fusion.along??S.lastRouteAlong,maxAhead=9
   for(const h of S.routeLaneHints){const d=h.along-along;if(d>=-12&&d<=maxAhead)return{...h,distance:Math.max(0,d)}}
   return null
 }
+function routeLaneHintNear(along,tolerance=55){
+  if(!Number.isFinite(along)||!S.routeLaneHints.length)return null;
+  let best=null;for(const h of S.routeLaneHints){const d=Math.abs(h.along-along);if(d<=tolerance&&(!best||d<best.delta))best={...h,delta:d,distance:Math.max(0,h.along-(S.fusion.along??S.routeFilter.along??S.lastRouteAlong??0))}}
+  return best
+}
 function maneuverTurn(m){
   const mod=m?.modifier||"straight",type=m?.type||"";
   if(type.includes("roundabout")||type==="rotary")return"roundabout";
@@ -810,7 +815,7 @@ function nextInstruction(pos){
     const delta=m.along-candidate.along;if(delta>650)break;
     if(delta>18){after={instruction:maneuverInstruction(m,maneuverTurn(m)),turn:maneuverTurn(m),distance:delta,road:m.step.name||""};break}
   }
-  return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,after,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
+  return{instruction,detail:`Dans ~${Math.round(distance)} m · ${candidate.step.name||"prochaine voie"}`,nextRoad:candidate.step.name||"",turn,distance,maneuverAlong:candidate.along,remaining:proj.remaining,progress:proj.progress,offRoute:proj.distance,arrived:false,after,maneuverId:`${candidate.type}:${Math.round(candidate.along)}`}
 }
 function turnTokenFits(token,desired){
   const v=normalizeIndication(token);
@@ -857,7 +862,7 @@ function corridorLaneScore(index,lane,nav,current){
   return score
 }
 function routeLaneStrategy(lane,nav){
-  const base=laneRoutePlan(lane,nav?.turn||"through"),along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,hint=upcomingRouteLaneHint(along,900);
+  const base=laneRoutePlan(lane,nav?.turn||"through"),along=S.fusion.along??S.routeFilter.along??S.lastRouteAlong,hint=Number.isFinite(nav?.maneuverAlong)?routeLaneHintNear(nav.maneuverAlong,60):upcomingRouteLaneHint(along,220);
   let compatible=[...base.compatible],source="OSM",hintDistance=null;
   if(hint&&hint.total===lane?.total){
     const osrm=osrmCompatibleLanes(hint,nav?.turn||"through").filter(i=>lane.accessible?.[i-1]!==false),intersection=compatible.filter(i=>osrm.includes(i));
