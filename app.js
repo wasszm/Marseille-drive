@@ -6,7 +6,7 @@ const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGp
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
-laneFilter:{roadId:null,index:null,candidate:null,hits:0},scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.29,targetHorizon:.29,viewHeading:null,rangeM:300,frameInterval:34,lastAdjustAt:0}};
+laneFilter:{roadId:null,index:null,candidate:null,hits:0},scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.252,targetHorizon:.252,viewHeading:null,rangeM:320,frameInterval:34,lastAdjustAt:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function appNow(){return S.replayActive&&Number.isFinite(S.replayClock)?S.replayClock:Date.now()}
 function setStatus(t,ms=3200){
@@ -1462,13 +1462,14 @@ function updateScene3dPerformance(ms){
 }
 function updateScene3dCamera(){
   const P=S.scene3d,speed=S.gps?.speedMps||0,turn=S.lastNav?.turn,dist=S.lastNav?.distance;
-  let targetH=.295-clamp(speed/45,0,.018);if(turn&&turn!=="through"&&Number.isFinite(dist)&&dist<140)targetH+=.008*(1-clamp(dist/140,0,1));P.targetHorizon=clamp(targetH,.27,.305);P.horizonRatio+=(P.targetHorizon-P.horizonRatio)*.055;
+  let targetH=.252-clamp(speed/65,0,.012);if(turn&&turn!=="through"&&Number.isFinite(dist)&&dist<120)targetH+=.006*(1-clamp(dist/120,0,1));
+  P.targetHorizon=clamp(targetH,.238,.266);P.horizonRatio+=(P.targetHorizon-P.horizonRatio)*.045;
   let targetHeading=rawSceneHeading();
   if(!S.demo&&S.routeCoords.length&&Number.isFinite(S.routeFilter.along)&&S.routeFilter.quality>=30){
-    const here=routePointAtAlong(S.routeFilter.along),look=routePointAtAlong(S.routeFilter.along+clamp(22+speed*2.1,24,72));
-    if(here&&look){const weight=turn&&turn!=="through"&&Number.isFinite(dist)&&dist<170?clamp(.18+(170-dist)/300,.18,.48):.18;targetHeading=lerpAngle(here.bearing,look.bearing,weight)}
+    const here=routePointAtAlong(S.routeFilter.along),look=routePointAtAlong(S.routeFilter.along+clamp(28+speed*2.5,30,88));
+    if(here&&look){const weight=turn&&turn!=="through"&&Number.isFinite(dist)&&dist<170?clamp(.20+(170-dist)/320,.20,.50):.20;targetHeading=lerpAngle(here.bearing,look.bearing,weight)}
   }
-  if(!Number.isFinite(P.viewHeading))P.viewHeading=targetHeading;else P.viewHeading=lerpAngle(P.viewHeading,targetHeading,.075)
+  if(!Number.isFinite(P.viewHeading))P.viewHeading=targetHeading;else P.viewHeading=lerpAngle(P.viewHeading,targetHeading,.064)
 }
 function drawSkyDetails(c,w,h,hz,day){
   if(day){
@@ -1487,8 +1488,8 @@ function drawCurbs(c,w,h,hz,path,metrics){
   draw(metrics.curbMin,1);draw(metrics.curbMax,-1)
 }
 function roadScreenPoint(local,w,h,hz){
-  const maxM=S.scene3d?.rangeM||280,f=clamp(local.forward,0,maxM),bot=h*1.045;
-  const curve=Math.pow(f/maxM,.56),y=bot-(bot-hz)*curve,ppm=(w*.055)/(1+f/38),x=w/2+local.side*ppm;
+  const maxM=S.scene3d?.rangeM||320,f=clamp(local.forward,0,maxM),bot=h*1.025;
+  const curve=Math.pow(f/maxM,.62),y=bot-(bot-hz)*curve,ppm=(w*.046)/(1+f/45),x=w/2+local.side*ppm;
   return{x,y,ppm,forward:f}
 }
 function pathNormal(path,i){
@@ -1562,21 +1563,27 @@ function drawGroundArea(c,o,pos,heading,w,h,hz,day){
   c.save();c.strokeStyle=o.kind==="water"?(day?"rgba(205,229,233,.38)":"rgba(105,153,166,.34)"):"rgba(72,105,76,.42)";c.lineWidth=1;c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.stroke();
   if(o.kind==="water"&&S.scene3d.quality==="HIGH"){c.strokeStyle="rgba(230,245,245,.18)";for(let i=1;i<shape.length;i+=3){const p=shape[i];c.beginPath();c.moveTo(p.x-4,p.y);c.lineTo(p.x+4,p.y);c.stroke()}}c.restore();return true
 }
+function buildingHeightPixels(o,p,h){
+  const perspective=clamp(p.ppm*.54,.42,7.2),nearDamp=clamp((p.forward-7)/34,.58,1);
+  return clamp(o.height*perspective*nearDamp,4,h*.32)
+}
 function drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day){
   const base=projectGroundShape(o.geometry,pos,heading,w,h,hz);if(!base)return false;
-  const top=base.map(p=>({x:p.x,y:p.y-clamp(o.height*p.ppm*.82,5,h*.46),ppm:p.ppm})),facade=osmFacadeColor(o.tags,day),roof=osmRoofColor(o.tags,day),faces=[];
+  const top=base.map(p=>({x:p.x,y:p.y-buildingHeightPixels(o,p,h),ppm:p.ppm,forward:p.forward})),facade=osmFacadeColor(o.tags,day),roof=osmRoofColor(o.tags,day),faces=[];
   for(let i=0;i<base.length;i++){
     const j=(i+1)%base.length,a=base[i],b=base[j],ta=top[i],tb=top[j],depth=(a.forward+b.forward)/2,edge=Math.abs(b.x-a.x);
     faces.push({depth,a,b,ta,tb,edge,index:i,pts:[[a.x,a.y],[b.x,b.y],[tb.x,tb.y],[ta.x,ta.y]]})
   }
   faces.sort((a,b)=>b.depth-a.depth);
   for(const face of faces){
-    poly(c,face.pts,facade);const shade=clamp(.05+Math.abs(face.b.x-face.a.x)/Math.max(30,w)*.16+(face.index%2)*.035,.04,.20);c.save();c.globalAlpha=shade;c.fillStyle="#000";c.beginPath();face.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.fill();c.restore();
+    poly(c,face.pts,facade);
+    const orient=Math.abs(face.b.x-face.a.x)/Math.max(30,w),shade=clamp(.045+orient*.12+(face.index%2)*.025,.035,.16);
+    c.save();c.globalAlpha=shade;c.fillStyle="#000";c.beginPath();face.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.fill();c.restore();
     drawFacadeWindows(c,face,day,S.scene3d.buildingDetail,Number(o.id)%11)
   }
   poly(c,top.map(p=>[p.x,p.y]),roof);
-  if(S.scene3d.buildingDetail>0){c.save();c.strokeStyle=day?"rgba(60,70,74,.28)":"rgba(210,220,222,.14)";c.lineWidth=1;c.beginPath();top.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.stroke();c.restore()}
-  if(o.name&&base.some(p=>p.ppm>2.7)&&S.scene3d.quality!=="LOW"){const near=base.reduce((a,b)=>a.forward<b.forward?a:b);c.fillStyle="#fff";c.font="800 8px -apple-system,Arial";c.textAlign="center";c.fillText(o.name.slice(0,18),near.x,near.y-clamp(o.height*near.ppm*.82,5,h*.44)-4)}
+  if(S.scene3d.buildingDetail>0){c.save();c.strokeStyle=day?"rgba(60,70,74,.22)":"rgba(210,220,222,.11)";c.lineWidth=.8;c.beginPath();top.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.stroke();c.restore()}
+  if(o.name&&base.some(p=>p.ppm>2.8)&&S.scene3d.quality==="HIGH"){const near=base.reduce((a,b)=>a.forward<b.forward?a:b),hp=buildingHeightPixels(o,near,h);c.fillStyle="rgba(255,255,255,.82)";c.font="800 7px -apple-system,Arial";c.textAlign="center";c.fillText(o.name.slice(0,16),near.x,near.y-hp-3)}
   return true
 }
 function drawRailGeometry(c,o,pos,heading,w,h,hz){
@@ -1706,11 +1713,11 @@ function drawDecisionRibbon(c,w,h,hz,d,path,total){
   one(d.turn,d.distance,false);one(d.afterTurn,d.afterDistance,true)
 }
 function drawSignalHead(c,x,y,scale,experimental=null){
-  const poleH=clamp(8*scale,14,64),boxW=clamp(2.4*scale,7,17),boxH=clamp(6.2*scale,18,46);
-  c.save();c.strokeStyle="#6f797d";c.lineWidth=Math.max(1,scale*.38);c.beginPath();c.moveTo(x,y);c.lineTo(x,y-poleH);c.stroke();
-  c.fillStyle="#101417";c.fillRect(x-boxW/2,y-poleH-boxH,boxW,boxH);
-  const lamps=[.20,.50,.80];for(const t of lamps){c.fillStyle="#586167";c.beginPath();c.arc(x,y-poleH-boxH+boxH*t,Math.max(2,boxW*.25),0,Math.PI*2);c.fill()}
-  if(experimental){const yy=experimental.type==="RED"?y-poleH-boxH+boxH*.20:y-poleH-boxH+boxH*.80;c.strokeStyle=experimental.type==="RED"?"rgba(255,90,90,.92)":"rgba(80,245,145,.92)";c.lineWidth=2;c.beginPath();c.arc(x,yy,Math.max(3,boxW*.36),0,Math.PI*2);c.stroke();c.fillStyle="#fff";c.font="900 7px -apple-system,Arial";c.textAlign="center";c.fillText("?",x+boxW*.75,yy+2)}
+  const s=clamp(scale*.72,.75,6.2),poleH=clamp(5.4*s,11,42),boxW=clamp(1.55*s,5,10),boxH=clamp(4.5*s,14,29);
+  c.save();c.strokeStyle="#697477";c.lineWidth=Math.max(.8,s*.26);c.beginPath();c.moveTo(x,y);c.lineTo(x,y-poleH);c.stroke();
+  c.fillStyle="#111619";c.fillRect(x-boxW/2,y-poleH-boxH,boxW,boxH);
+  const lamps=[.20,.50,.80];for(const t of lamps){c.fillStyle="#566064";c.beginPath();c.arc(x,y-poleH-boxH+boxH*t,Math.max(1.4,boxW*.22),0,Math.PI*2);c.fill()}
+  if(experimental){const yy=experimental.type==="RED"?y-poleH-boxH+boxH*.20:y-poleH-boxH+boxH*.80;c.strokeStyle=experimental.type==="RED"?"rgba(255,90,90,.9)":"rgba(80,245,145,.9)";c.lineWidth=1.4;c.beginPath();c.arc(x,yy,Math.max(2,boxW*.31),0,Math.PI*2);c.stroke();c.fillStyle="#fff";c.font="900 6px -apple-system,Arial";c.textAlign="center";c.fillText("?",x+boxW*.72,yy+2)}
   c.restore()
 }
 function drawMappedSignals(c,w,h,hz,heading,path,metrics){
@@ -1753,6 +1760,11 @@ function drawRoadFurniture(c,w,h,hz,heading,path,metrics){
       else{c.fillStyle="#d9e0e3";c.fillRect(p.x-5,p.y-pole-7,10,7)}
     }
   }
+}
+function drawDemoSignalPair(c,w,h,hz,path,metrics,count){
+  const f=74,left=screenAtForwardOffset(path,f,metrics.curbMin-.7,w,h,hz),right=screenAtForwardOffset(path,f,metrics.curbMax+.7,w,h,hz);
+  drawSignalHead(c,left.x,left.y,left.ppm*.78,{type:"RED"});drawSignalHead(c,right.x,right.y,right.ppm*.78,{type:"RED"});
+  const mid=screenAtForward(path,f,w,h,hz);c.save();c.fillStyle="rgba(6,12,15,.66)";c.font="900 8px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.ceil(count)}s*`,mid.x,mid.y-9);c.restore()
 }
 function drawSignal(c,p,demoCount){
   c.fillStyle="#090b0d";c.fillRect(p.x-8,p.y-44,16,42);
@@ -1929,7 +1941,7 @@ function draw3D(d={}){
   const started=performance.now(),cv=$("drive"),r=cv.getBoundingClientRect(),D=Math.min(devicePixelRatio||1,2),w=Math.max(1,r.width),h=Math.max(1,r.height),tw=Math.round(w*D),th=Math.round(h*D);
   if(cv.width!==tw||cv.height!==th){cv.width=tw;cv.height=th}
   const c=cv.getContext("2d");c.setTransform(D,0,0,D,0,0);c.clearRect(0,0,w,h);
-  const hz=h*(S.scene3d?.horizonRatio||.29),metrics=sceneRoadMetrics(d),total=metrics.total,rec=clamp(d.recommended||d.lane||1,1,total),heading=sceneHeading(),path=scenePath(300),context=roadContext(),day=isDayScene(),g=c.createLinearGradient(0,0,0,hz);
+  const hz=h*(S.scene3d?.horizonRatio||.29),metrics=sceneRoadMetrics(d),total=metrics.total,rec=clamp(d.recommended||d.lane||1,1,total),heading=sceneHeading(),path=scenePath(S.scene3d.rangeM||320),context=roadContext(),day=isDayScene(),g=c.createLinearGradient(0,0,0,hz);
   g.addColorStop(0,day?"#70a4bc":"#0b171f");g.addColorStop(1,day?"#c7dce1":"#253741");c.fillStyle=g;c.fillRect(0,0,w,hz);
   drawSkyDetails(c,w,h,hz,day);
   c.fillStyle=day?"#718079":"#27343a";c.fillRect(0,hz,w,h-hz);
@@ -1972,7 +1984,7 @@ function draw3D(d={}){
   if(S.scene3d.quality==="HIGH"&&Array.isArray(d.destinations)){const lp=screenAtForward(path,28,w,h,hz);for(let i=0;i<Math.min(total,d.destinations.length);i++){const txt=d.destinations[i];if(!txt)continue;const pp=screenAtForwardOffset(path,28,metrics.centers[i],w,h,hz),x=pp.x;c.fillStyle="rgba(255,255,255,.68)";c.font="800 6px -apple-system,Arial";c.textAlign="center";c.fillText(txt.slice(0,12),x,lp.y+15)}}
   drawSceneLabels(c,w,h,hz,path,d,metrics);
   if(Number.isFinite(d.distance)){const p=screenAtForward(path,clamp(d.distance,18,190),w,h,hz);c.fillStyle="#fff";c.font="900 12px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.round(d.distance)} m`,p.x,p.y-12)}
-  if(d.demo){const p=screenAtForward(path,70,w,h,hz);drawSignal(c,p,d.signal)}
+  if(d.demo&&Number.isFinite(d.signal))drawDemoSignalPair(c,w,h,hz,path,metrics,d.signal)
   drawEgoMarker(c,w,h,d);
   const elapsed=performance.now()-started;updateScene3dPerformance(elapsed)
 }
