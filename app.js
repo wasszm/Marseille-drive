@@ -1130,7 +1130,7 @@ function calibrationSummary(){
 }
 function exportTrack(){
   if(!S.track.length&&!S.truthEvents.length)return;
-  const payload={app:"Marseille Drive",version:"BETA 10",exportedAt:new Date().toISOString(),summary:calibrationSummary(),meta:{language:navigator.language||"fr",screen:{w:window.innerWidth||null,h:window.innerHeight||null,dpr:devicePixelRatio||1},prefetchPacks:S.aheadPrefetch.count||0},points:S.track,truthEvents:S.truthEvents,replayResults:S.replayResults.length?S.replayResults:null,destination:S.destination?{...S.destination,label:S.destinationLabel||null}:null,route:S.route?{distance:S.route.distance,duration:S.route.duration,geometry:S.route.geometry,legs:S.route.legs}:null};
+  const payload={app:"Marseille Drive",version:"BETA 11",exportedAt:new Date().toISOString(),summary:calibrationSummary(),meta:{language:navigator.language||"fr",screen:{w:window.innerWidth||null,h:window.innerHeight||null,dpr:devicePixelRatio||1},prefetchPacks:S.aheadPrefetch.count||0},points:S.track,truthEvents:S.truthEvents,replayResults:S.replayResults.length?S.replayResults:null,destination:S.destination?{...S.destination,label:S.destinationLabel||null}:null,route:S.route?{distance:S.route.distance,duration:S.route.duration,geometry:S.route.geometry,legs:S.route.legs}:null};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download=`marseille-drive-trace-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)
 }
@@ -1334,7 +1334,7 @@ function setView(v){
   S.view=v;document.body.classList.toggle("drive-mode",v==="drive");
   $("map").style.display=v==="map"?"block":"none";$("drive").style.display=v==="drive"?"block":"none";$("car").style.display=v==="drive"?"block":"none";
   $("mapBtn").classList.toggle("active",v==="map");$("driveBtn").classList.toggle("active",v==="drive");
-  $("modeLabel").textContent=`BETA 10 · ${v==="map"?"CARTE RÉELLE":"NAVIGATION 3D"}`;
+  $("modeLabel").textContent=`BETA 11 · ${v==="map"?"CARTE RÉELLE":"NAVIGATION 3D"}`;
   if(v==="map")setTimeout(()=>S.map.invalidateSize(),80);
   else{requestNavWakeLock();draw3D(currentDrawState())}
 }
@@ -1987,12 +1987,12 @@ function bind(){
   window.addEventListener("resize",()=>{if(S.view==="drive")draw3D(currentDrawState())})
 }
 async function boot(){
-  bind();initMap();setView("map");if(!restoreTripSnapshot())setStatus("BETA 10 · horizon multi-capteurs · active le GPS");if(!S.renderRaf)S.renderRaf=requestAnimationFrame(renderLoop);
+  bind();initMap();setView("map");if(!restoreTripSnapshot())setStatus("BETA 11 · horizon multi-capteurs · active le GPS");if(!S.renderRaf)S.renderRaf=requestAnimationFrame(renderLoop);
   if("serviceWorker"in navigator)try{
     const regs=await navigator.serviceWorker.getRegistrations();
-    for(const reg of regs){const url=reg.active?.scriptURL||reg.waiting?.scriptURL||reg.installing?.scriptURL||"";if(url&&!url.includes("v=10.0.0"))await reg.unregister()}
-    if("caches"in window){for(const key of await caches.keys())if(key.startsWith("md-beta-")&&key!=="md-beta-10.0.0")await caches.delete(key)}
-    await navigator.serviceWorker.register("./sw.js?v=10.0.0",{updateViaCache:"none"})
+    for(const reg of regs){const url=reg.active?.scriptURL||reg.waiting?.scriptURL||reg.installing?.scriptURL||"";if(url&&!url.includes("v=11.0.0"))await reg.unregister()}
+    if("caches"in window){for(const key of await caches.keys())if(key.startsWith("md-beta-")&&key!=="md-beta-11.0.0")await caches.delete(key)}
+    await navigator.serviceWorker.register("./sw.js?v=11.0.0",{updateViaCache:"none"})
   }catch(e){}
 }
 boot();
