@@ -220,3 +220,12 @@ body.drive-mode .vision-footer{font-size:5px}
  body.drive-mode .speed-limit{top:127px}
  body.drive-mode .fusion-badge{top:174px}
 }
+
+/* BETA 12 — automatic cockpit fade */
+body.drive-mode .metrics,body.drive-mode .toolbar,body.drive-mode .status{transition:opacity .28s ease,transform .28s ease}
+body.drive-mode.hud-sleep .metrics{opacity:0;transform:translateY(-8px);pointer-events:none}
+body.drive-mode.hud-sleep .toolbar{opacity:0;transform:translateY(-8px);pointer-events:none}
+body.drive-mode.hud-sleep .status{opacity:0;pointer-events:none}
+body.drive-mode.hud-sleep .maneuver-hud{top:61px}
+body.drive-mode.hud-sleep .speed-limit{top:63px}
+body.drive-mode.hud-sleep .fusion-badge{top:110px}
