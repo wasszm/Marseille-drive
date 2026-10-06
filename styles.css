@@ -84,7 +84,7 @@ body.drive-mode .topbar{background:rgba(7,12,16,.76)}
 .user-dot{transition:transform .25s linear;transform-origin:center}
 .user-dot:after{content:"";position:absolute;left:50%;top:-10px;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid #1d79ff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
 
-/* BETA 11 — fusion HUD */
+/* BETA 12 — fusion HUD */
 .fusion-badge{position:absolute;top:229px;right:12px;padding:5px 8px;border-radius:9px;background:rgba(8,13,17,.82);border:1px solid rgba(255,255,255,.09);font-size:7px;font-weight:900;letter-spacing:.45px;opacity:.86}
 .maneuver-hud{display:none;position:absolute;left:12px;top:199px;max-width:230px;padding:9px 11px;align-items:center;gap:10px;background:rgba(7,12,16,.82);pointer-events:none}
 .maneuver-glyph{width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:#fff;color:#111;font-size:24px;font-weight:950;flex:0 0 auto}
@@ -108,7 +108,7 @@ body.drive-mode #visionStatus{display:block;max-width:none}
 
 .user-dot.snapped{box-shadow:0 0 0 7px rgba(29,121,255,.12),0 0 16px rgba(29,121,255,.55)}
 
-/* BETA 11 — continuous fusion */
+/* BETA 12 — continuous fusion */
 .belief-hud{display:none;position:absolute;left:12px;top:252px;max-width:250px;padding:6px 8px;border-radius:11px;background:rgba(7,12,16,.78);border:1px solid rgba(255,255,255,.08);gap:4px;align-items:stretch;pointer-events:none}
 .belief-hud .belief-lane{min-width:34px;padding:5px 7px;border-radius:8px;background:#11191e;text-align:center;font-size:8px;font-weight:900;opacity:.55}
 .belief-hud .belief-lane strong{display:block;font-size:11px;line-height:1}.belief-hud .belief-lane span{display:block;margin-top:2px;font-size:7px;opacity:.6}
@@ -127,7 +127,7 @@ body.drive-mode .belief-hud.hidden{display:none}
 
 .belief-hud .belief-lane.candidate{opacity:.82;outline:1px dashed rgba(255,255,255,.35)}
 
-/* BETA 11 — route horizon */
+/* BETA 12 — route horizon */
 .horizon-hud{display:none;position:absolute;left:12px;right:12px;top:292px;padding:7px 9px;border-radius:12px;background:rgba(7,12,16,.74);border:1px solid rgba(255,255,255,.07);pointer-events:none}
 .horizon-head{display:flex;justify-content:space-between;align-items:center;font-size:7px;letter-spacing:.75px;opacity:.72}.horizon-head b{font-size:8px;letter-spacing:.2px}
 .horizon-items{display:flex;gap:6px;margin-top:5px;overflow:hidden}
@@ -145,7 +145,7 @@ body.drive-mode .horizon-hud{top:292px}
 .junction-lanes span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:54px}
 .junction-lanes span b{font-size:28px;line-height:1}.junction-lanes span small{max-width:76px;margin-top:3px;font-size:6px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* BETA 11 — immersive 3D layout */
+/* BETA 12 — immersive 3D layout */
 body.drive-mode .topbar{position:absolute;left:10px;right:10px;top:max(8px,env(safe-area-inset-top));padding:8px 11px;background:linear-gradient(180deg,rgba(7,12,16,.70),rgba(7,12,16,.52));border-color:rgba(255,255,255,.07);box-shadow:0 8px 24px rgba(0,0,0,.16);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 body.drive-mode .brand{font-size:10px;letter-spacing:1.45px}body.drive-mode .speedbox{font-size:24px}
 body.drive-mode .metrics{position:absolute;left:10px;right:10px;top:67px;margin:0;padding:6px 2px;background:rgba(7,12,16,.46);border-color:rgba(255,255,255,.06);box-shadow:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
