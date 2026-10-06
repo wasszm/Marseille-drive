@@ -1518,6 +1518,13 @@ function drawPathLine(c,pts,color,width,dash=[]){if(pts.length<2)return;c.save()
 function pathIndexAtForward(path,forward){let bi=0;for(let i=1;i<path.length;i++)if(Math.abs(path[i].forward-forward)<Math.abs(path[bi].forward-forward))bi=i;return bi}
 function screenAtForward(path,forward,w,h,hz){const i=pathIndexAtForward(path,forward);return roadScreenPoint(path[i]||{side:0,forward:0},w,h,hz)}
 function screenAtForwardOffset(path,forward,offset,w,h,hz){const i=pathIndexAtForward(path,forward);return roadScreenPoint(offsetLocalPathPoint(path,i,offset),w,h,hz)}
+function screenTangentAtForward(path,forward,w,h,hz){
+  const i=pathIndexAtForward(path,forward),a=roadScreenPoint(path[Math.max(0,i-1)]||path[i],w,h,hz),b=roadScreenPoint(path[Math.min(path.length-1,i+1)]||path[i],w,h,hz);
+  return Math.atan2(b.y-a.y,b.x-a.x)+Math.PI/2
+}
+function drawArrowOnPath(c,path,forward,offset,on,turn,w,h,hz){
+  const p=screenAtForwardOffset(path,forward,offset,w,h,hz),rot=screenTangentAtForward(path,forward,w,h,hz);c.save();c.translate(p.x,p.y);c.rotate(rot);arrow(c,0,0,on,turn);c.restore()
+}
 function perspectiveEnvPoint(side,forward,w,h,hz){
   if(forward<=4||forward>(S.scene3d?.rangeM||280))return null;
   return roadScreenPoint({side,forward},w,h,hz)
@@ -1662,13 +1669,14 @@ function drawEnvironment(c,w,h,hz,heading){
     c.restore()
   }
 }
-function drawCrossings(c,w,h,hz,heading,metrics){
+function drawCrossings(c,w,h,hz,heading,path,metrics){
   const pos=scenePosition();if(S.demo||!pos)return;
-  for(const o of visibleEnvironment(pos,heading,105).filter(x=>x.kind==="crossing").slice(0,S.scene3d.quality==="LOW"?2:4)){
-    const p=roadScreenPoint({side:0,forward:o.forward},w,h,hz),x1=p.x+metrics.driveMin*p.ppm,x2=p.x+metrics.driveMax*p.ppm,step=Math.max(2,p.ppm*.27);
-    c.save();c.strokeStyle="rgba(255,255,255,.88)";c.lineWidth=Math.max(2,p.ppm*.22);
-    for(let i=-3;i<=3;i++){const yy=p.y+i*step;c.beginPath();c.moveTo(x1,yy);c.lineTo(x2,yy);c.stroke()}
-    c.restore()
+  for(const o of visibleEnvironment(pos,heading,110).filter(x=>x.kind==="crossing").slice(0,S.scene3d.quality==="LOW"?2:4)){
+    c.save();c.fillStyle="rgba(255,255,255,.84)";
+    for(let i=-3;i<=3;i++){
+      const f=o.forward+i*.85,a=screenAtForwardOffset(path,f,metrics.driveMin,w,h,hz),b=screenAtForwardOffset(path,f,metrics.driveMax,w,h,hz),a2=screenAtForwardOffset(path,f+.38,metrics.driveMin,w,h,hz),b2=screenAtForwardOffset(path,f+.38,metrics.driveMax,w,h,hz);
+      poly(c,[[a.x,a.y],[b.x,b.y],[b2.x,b2.y],[a2.x,a2.y]],"rgba(255,255,255,.82)")
+    }c.restore()
   }
 }
 function drawRouteIntersections(c,w,h,hz,heading,path,metrics){
@@ -1775,11 +1783,11 @@ function drawRoadFurniture(c,w,h,hz,heading,path,metrics){
     }
     if(!["stop","give_way","bollard","bench","hydrant","calming","sign"].includes(o.kind))continue;
     if(o.kind==="calming"){
-      if(Math.abs(o.side)>metrics.roadWidth*.8)continue;const p=roadScreenPoint({side:0,forward:o.forward},w,h,hz),x1=p.x+metrics.driveMin*p.ppm,x2=p.x+metrics.driveMax*p.ppm;
+      if(Math.abs(o.side)>metrics.roadWidth*.8)continue;const p1=screenAtForwardOffset(path,o.forward,metrics.driveMin,w,h,hz),p2=screenAtForwardOffset(path,o.forward,metrics.driveMax,w,h,hz),p=p1,x1=p1.x,x2=p2.x;
       c.save();c.strokeStyle=day?"rgba(215,205,170,.7)":"rgba(170,160,135,.55)";c.lineWidth=Math.max(2,p.ppm*.32);c.beginPath();c.moveTo(x1,p.y);c.lineTo(x2,p.y);c.stroke();c.restore();continue
     }
     if((o.kind==="stop"||o.kind==="give_way")&&Math.abs(o.side)<Math.max(Math.abs(metrics.driveMin),Math.abs(metrics.driveMax))+2){
-      const rp=roadScreenPoint({side:0,forward:o.forward},w,h,hz),x1=rp.x+metrics.driveMin*rp.ppm,x2=rp.x+metrics.driveMax*rp.ppm;c.save();c.strokeStyle="rgba(255,255,255,.82)";c.lineWidth=Math.max(1.5,rp.ppm*.18);if(o.kind==="give_way")c.setLineDash([5,4]);c.beginPath();c.moveTo(x1,rp.y);c.lineTo(x2,rp.y);c.stroke();c.restore()
+      const r1=screenAtForwardOffset(path,o.forward,metrics.driveMin,w,h,hz),r2=screenAtForwardOffset(path,o.forward,metrics.driveMax,w,h,hz),rp=r1,x1=r1.x,x2=r2.x;c.save();c.strokeStyle="rgba(255,255,255,.82)";c.lineWidth=Math.max(1.5,rp.ppm*.18);if(o.kind==="give_way")c.setLineDash([5,4]);c.beginPath();c.moveTo(x1,rp.y);c.lineTo(x2,rp.y);c.stroke();c.restore()
     }
     const side=o.side===0?1:Math.sign(o.side),edge=side<0?metrics.asphaltMin:metrics.asphaltMax,drawSide=Math.abs(o.side)<Math.abs(edge)+.6?edge+side*.85:o.side,p=roadScreenPoint({side:drawSide,forward:o.forward},w,h,hz),sc=p.ppm;
     if(o.kind==="bollard"){c.fillStyle=day?"#d6d8d5":"#9da4a6";c.fillRect(p.x-1.3,p.y-clamp(1.1*sc,4,12),2.6,clamp(1.1*sc,4,12));c.fillStyle="#40484b";c.fillRect(p.x-1.3,p.y-clamp(.72*sc,3,8),2.6,2)}
@@ -2007,12 +2015,12 @@ function draw3D(d={}){
   drawLaneCountTransition(c,w,h,hz,path,d,metrics);
   drawLaneGuidanceRibbon(c,w,h,hz,path,{...d,recommended:rec},metrics);
 
-  drawCrossings(c,w,h,hz,heading,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
+  drawCrossings(c,w,h,hz,heading,path,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
   drawMappedSignals(c,w,h,hz,heading,path,metrics);
   drawRoadFurniture(c,w,h,hz,heading,path,metrics);
   if(d.demo&&S.scene3d.quality!=="LOW"){const c1=metrics.centers[0]??-2,c2=metrics.centers[Math.min(1,metrics.centers.length-1)]??2;drawDemoVehicle(c,w,h,hz,path,c1,112,day);drawDemoVehicle(c,w,h,hz,path,c2,168,day)}
   const arrowP=screenAtForward(path,18,w,h,hz);
-  for(let i=1;i<=total;i++){const ap=screenAtForwardOffset(path,18,metrics.centers[i-1],w,h,hz),lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");arrow(c,ap.x,Math.min(h*.73,ap.y),i===rec,lt)}
+  for(let i=1;i<=total;i++){const lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");drawArrowOnPath(c,path,18,metrics.centers[i-1],i===rec,lt,w,h,hz)}
   if(d.target&&d.target!==rec&&metrics.centers[d.target-1]!==undefined){const tp=screenAtForwardOffset(path,42,metrics.centers[d.target-1],w,h,hz),tx=tp.x;c.fillStyle="rgba(220,255,235,.86)";c.font="900 7px -apple-system,Arial";c.textAlign="center";c.fillText("CIBLE",tx,tp.y)}
   if(S.scene3d.quality==="HIGH"&&Array.isArray(d.destinations)){const lp=screenAtForward(path,28,w,h,hz);for(let i=0;i<Math.min(total,d.destinations.length);i++){const txt=d.destinations[i];if(!txt)continue;const pp=screenAtForwardOffset(path,28,metrics.centers[i],w,h,hz),x=pp.x;c.fillStyle="rgba(255,255,255,.68)";c.font="800 6px -apple-system,Arial";c.textAlign="center";c.fillText(txt.slice(0,12),x,lp.y+15)}}
   drawSceneLabels(c,w,h,hz,path,d,metrics);
