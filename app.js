@@ -6,7 +6,7 @@ const S={map:null,roads:[],signals:[],junctions:[],environment:[],gps:null,rawGp
 fusion:{position:null,along:null,lateralM:0,heading:0,speedMps:0,accelerationMps2:0,quality:0,mode:"GPS",lastGpsAt:0,lastPredictAt:0,roadId:null},sensorHealth:{gps:0,map:0,route:0,vision:0,compass:0,overall:0,label:"FAIBLE"},
 laneBelief:{roadId:null,total:0,probs:[],index:null,confidence:0,lastVisionShift:0},
 laneCalibration:{byRoad:{}},laneTransition:{state:"STABLE",direction:0,score:0,lastLateral:null,lastAt:0,startedAt:0,lateralSpeed:0},
-laneFilter:{roadId:null,index:null,candidate:null,hits:0},scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.252,targetHorizon:.252,viewHeading:null,rangeM:320,frameInterval:34,lastAdjustAt:0}};
+laneFilter:{roadId:null,index:null,candidate:null,hits:0},hudHideTimer:null,scene3d:{avgMs:0,quality:"HIGH",objectLimit:110,buildingDetail:2,horizonRatio:.252,targetHorizon:.252,viewHeading:null,rangeM:320,frameInterval:34,lastAdjustAt:0}};
 const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,angleDiff=(a,b)=>Math.abs(((a-b+540)%360)-180),pipe=v=>typeof v==="string"?v.split("|").map(x=>x.trim()):[],positiveInt=v=>{const n=parseInt(v,10);return Number.isFinite(n)&&n>0?n:0};
 function appNow(){return S.replayActive&&Number.isFinite(S.replayClock)?S.replayClock:Date.now()}
 function setStatus(t,ms=3200){
@@ -1198,7 +1198,7 @@ async function loadReplayFile(ev){
   }catch(e){setStatus("Replay impossible : "+e.message)}
   finally{if(ev?.target)ev.target.value=""}
 }
-function toggleDiag(){
+function toggleDiag(){wakeDriveHud(9000);
   const p=$("diagPanel");p.classList.toggle("hidden");if(!p.classList.contains("hidden"))updateDiagnostics()
 }
 function recenterMap(){
@@ -1330,8 +1330,12 @@ async function requestNavWakeLock(){
   try{S.wakeLock=await navigator.wakeLock.request("screen");S.wakeLock.addEventListener?.("release",()=>{S.wakeLock=null})}catch(_){}
 }
 async function releaseNavWakeLock(){try{await S.wakeLock?.release?.()}catch(_){}S.wakeLock=null}
+function wakeDriveHud(ms=4300){
+  if(S.view!=="drive")return;document.body.classList.remove("hud-sleep");clearTimeout(S.hudHideTimer);
+  S.hudHideTimer=setTimeout(()=>{if(S.view!=="drive")return;if($("diagPanel")&&!$("diagPanel").classList.contains("hidden"))return;document.body.classList.add("hud-sleep")},ms)
+}
 function setView(v){
-  S.view=v;document.body.classList.toggle("drive-mode",v==="drive");
+  S.view=v;document.body.classList.toggle("drive-mode",v==="drive");if(v==="drive")wakeDriveHud();else{document.body.classList.remove("hud-sleep");clearTimeout(S.hudHideTimer)}
   $("map").style.display=v==="map"?"block":"none";$("drive").style.display=v==="drive"?"block":"none";$("car").style.display=v==="drive"?"block":"none";
   $("mapBtn").classList.toggle("active",v==="map");$("driveBtn").classList.toggle("active",v==="drive");
   $("modeLabel").textContent=`BETA 11 · ${v==="map"?"CARTE RÉELLE":"NAVIGATION 3D"}`;
@@ -1996,7 +2000,7 @@ function bind(){
   window.addEventListener("online",()=>setStatus("Connexion rétablie"));
   window.addEventListener("offline",()=>setStatus("Hors ligne · GPS et caches locaux restent disponibles"));
   window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){if(S.view==="map")setTimeout(()=>S.map.invalidateSize(),80);if(S.gpsWatch!==null||S.view==="drive")requestNavWakeLock()}});
-  window.addEventListener("resize",()=>{if(S.view==="drive")draw3D(currentDrawState())})
+  window.addEventListener("resize",()=>{if(S.view==="drive")draw3D(currentDrawState())});window.addEventListener("pointerdown",()=>{if(S.view==="drive")wakeDriveHud()}, {passive:true})
 }
 async function boot(){
   bind();initMap();setView("map");if(!restoreTripSnapshot())setStatus("BETA 11 · horizon multi-capteurs · active le GPS");if(!S.renderRaf)S.renderRaf=requestAnimationFrame(renderLoop);
