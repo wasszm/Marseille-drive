@@ -1908,6 +1908,18 @@ function laneBoundaryStyle(lane,boundary){
   return{solid:!a||!b,double:!a&&!b}
 }
 function stableHash(v){let h=2166136261;for(const ch of String(v||"")){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function drawSidewalkDetails(c,w,h,hz,path,metrics,day){
+  if(S.scene3d.quality==="LOW")return;
+  const sides=[
+    {inner:metrics.curbMin,outer:metrics.curbMin-metrics.sidewalkLeft,width:metrics.sidewalkLeft},
+    {inner:metrics.curbMax,outer:metrics.curbMax+metrics.sidewalkRight,width:metrics.sidewalkRight}
+  ];
+  c.save();
+  for(const side of sides){
+    if(side.width<.5)continue;drawPathLine(c,offsetScreenPath(path,side.inner,w,h,hz),day?"rgba(85,89,89,.28)":"rgba(15,18,19,.32)",1.4);
+    for(let f=18;f<145;f+=S.scene3d.quality==="HIGH"?9:14){const a=screenAtForwardOffset(path,f,side.inner,w,h,hz),b=screenAtForwardOffset(path,f,side.outer,w,h,hz);c.strokeStyle=day?"rgba(70,75,76,.13)":"rgba(220,225,225,.07)";c.lineWidth=.55;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke()}
+  }c.restore()
+}
 function drawRoadSurfaceDetails(c,w,h,hz,path,metrics){
   if(S.scene3d.quality==="LOW")return;const seed=stableHash(effectiveMatch()?.road?.id||"road"),count=S.scene3d.quality==="HIGH"?22:12;
   c.save();for(let i=0;i<count;i++){
@@ -2013,6 +2025,7 @@ function draw3D(d={}){
   poly(c,[...asphaltL,...asphaltR.slice().reverse()],roadSurfaceColor());
   if(metrics.cycleLeft.width>0)poly(c,[...curbL,...asphaltL.slice().reverse()],day?"#5b9177":"#315647");
   if(metrics.cycleRight.width>0)poly(c,[...asphaltR,...curbR.slice().reverse()],day?"#5b9177":"#315647");
+  drawSidewalkDetails(c,w,h,hz,path,metrics,day);
   drawRoadSurfaceDetails(c,w,h,hz,path,metrics);
   drawParkingBays(c,w,h,hz,path,metrics);
   drawCenterTreatment(c,w,h,hz,path,metrics);
