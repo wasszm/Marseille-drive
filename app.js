@@ -1431,8 +1431,20 @@ function rawSceneHeading(){
 }
 function sceneHeading(){return S.demo?0:(Number.isFinite(S.scene3d.viewHeading)?S.scene3d.viewHeading:rawSceneHeading())}
 function geoToLocal(origin,heading,p){const d=haversineM(origin,p),a=signedAngle(heading,bearing(origin,p));return{side:Math.sin(rad(a))*d,forward:Math.cos(rad(a))*d}}
+function interpolatePathSide(raw,f){
+  if(!raw?.length)return 0;if(f<=raw[0].forward)return raw[0].side;
+  for(let i=1;i<raw.length;i++){const a=raw[i-1],b=raw[i];if(f<=b.forward){const span=Math.max(.01,b.forward-a.forward),t=clamp((f-a.forward)/span,0,1);return a.side+(b.side-a.side)*t}}
+  return raw[raw.length-1].side
+}
+function resampleScenePath(raw,maxM,step=6){
+  if(!raw?.length)return[];const end=Math.min(maxM,raw[raw.length-1].forward),out=[];
+  for(let f=0;f<=end;f+=step)out.push({side:interpolatePathSide(raw,f),forward:f});
+  if(out.length&&out[out.length-1].forward<end-1)out.push({side:interpolatePathSide(raw,end),forward:end});
+  for(let pass=0;pass<2;pass++){const next=out.map((p,i)=>{if(i===0||i===out.length-1)return{...p};const a=out[Math.max(0,i-2)],b=out[i-1],d=out[i+1],e=out[Math.min(out.length-1,i+2)],smooth=(a.side+b.side*2+p.side*4+d.side*2+e.side)/10,weight=clamp(p.forward/45,.18,.62);return{side:p.side*(1-weight)+smooth*weight,forward:p.forward}});for(let i=0;i<out.length;i++)out[i]=next[i]}
+  return out
+}
 function scenePath(maxM=300){
-  if(S.demo){const out=[];for(let f=0;f<=maxM;f+=12){const bend=Math.sin((f/115)+(S.demoT||0)*.05)*Math.min(10,f*.035);out.push({side:bend,forward:f})}return out}
+  if(S.demo){const out=[];for(let f=0;f<=maxM;f+=6){const bend=Math.sin((f/118)+(S.demoT||0)*.045)*Math.min(9,f*.032);out.push({side:bend,forward:f})}return out}
   const pos=scenePosition();if(!pos)return[{side:0,forward:0},{side:0,forward:maxM}];
   const heading=sceneHeading(),geo=[];let anchor=null;
   if(S.routeCoords.length){
@@ -1452,16 +1464,16 @@ function scenePath(maxM=300){
   for(let i=1;i<geo.length;i++){
     const p=geo[i];cum+=haversineM(prev,p);prev=p;if(cum>maxM+40)break;const local=geoToLocal(pos,heading,p),side=local.side-centerCorrection;if(Math.abs(side)<210)raw.push({side,forward:cum})
   }
-  const out=[];for(let i=0;i<raw.length;i++){const a=raw[Math.max(0,i-1)],b=raw[i],c=raw[Math.min(raw.length-1,i+1)],side=(a.side+b.side*2+c.side)/4;if(!out.length||b.forward-out[out.length-1].forward>1.5)out.push({side,forward:b.forward})}
-  if(out.length<2)out.push({side:out[0]?.side||0,forward:maxM});return out
+  let out=resampleScenePath(raw,maxM,S.scene3d.quality==="HIGH"?5:S.scene3d.quality==="MEDIUM"?7:9);
+  if(out.length<2)out=[{side:raw[0]?.side||0,forward:0},{side:raw[raw.length-1]?.side||0,forward:maxM}];return out
 }
 function updateScene3dPerformance(ms){
   const P=S.scene3d;P.avgMs=P.avgMs?P.avgMs*.90+ms*.10:ms;
   const now=performance.now();if(now-(P.lastAdjustAt||0)<1200)return;P.lastAdjustAt=now;
   const old=P.quality;if(P.avgMs>29)P.quality="LOW";else if(P.avgMs>20)P.quality="MEDIUM";else if(P.avgMs<16.5)P.quality="HIGH";
-  if(P.quality==="HIGH"){P.objectLimit=110;P.buildingDetail=2;P.rangeM=300;P.frameInterval=34}
-  else if(P.quality==="MEDIUM"){P.objectLimit=82;P.buildingDetail=1;P.rangeM=275;P.frameInterval=46}
-  else{P.objectLimit=58;P.buildingDetail=0;P.rangeM=235;P.frameInterval=62}
+  if(P.quality==="HIGH"){P.objectLimit=112;P.buildingDetail=2;P.rangeM=330;P.frameInterval=34}
+  else if(P.quality==="MEDIUM"){P.objectLimit=84;P.buildingDetail=1;P.rangeM=300;P.frameInterval=46}
+  else{P.objectLimit=58;P.buildingDetail=0;P.rangeM=260;P.frameInterval=62}
   if(old!==P.quality&&$("envBadge"))$("envBadge").textContent=`3D ${P.quality} · ${S.environment.length}`
 }
 function updateScene3dCamera(){
