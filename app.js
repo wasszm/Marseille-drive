@@ -1995,6 +1995,7 @@ function draw3D(d={}){
   drawParkingBays(c,w,h,hz,path,metrics);
   drawCenterTreatment(c,w,h,hz,path,metrics);
   drawCurbs(c,w,h,hz,path,metrics);
+  drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);
   if(context.tunnel)drawTunnelShell(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
   if(context.bridge)drawBridgeRails(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
   drawPathLine(c,offsetScreenPath(path,metrics.driveMin,w,h,hz),"#edf0f0",1.8);drawPathLine(c,offsetScreenPath(path,metrics.driveMax,w,h,hz),"#edf0f0",1.8);
@@ -2014,7 +2015,7 @@ function draw3D(d={}){
   drawLaneCountTransition(c,w,h,hz,path,d,metrics);
   drawLaneGuidanceRibbon(c,w,h,hz,path,{...d,recommended:rec},metrics);
 
-  drawCrossings(c,w,h,hz,heading,path,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
+  drawCrossings(c,w,h,hz,heading,path,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
   drawMappedSignals(c,w,h,hz,heading,path,metrics);
   drawRoadFurniture(c,w,h,hz,heading,path,metrics);
   if(d.demo&&S.scene3d.quality!=="LOW"){const c1=metrics.centers[0]??-2,c2=metrics.centers[Math.min(1,metrics.centers.length-1)]??2;drawDemoVehicle(c,w,h,hz,path,c1,112,day);drawDemoVehicle(c,w,h,hz,path,c2,168,day)}
