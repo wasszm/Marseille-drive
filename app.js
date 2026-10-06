@@ -1921,6 +1921,10 @@ function laneBoundaryStyle(lane,boundary){
   return{solid:!a||!b,double:!a&&!b}
 }
 function stableHash(v){let h=2166136261;for(const ch of String(v||"")){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function drawRoadPerspectiveShading(c,w,h,hz,asphaltL,asphaltR,day){
+  const g=c.createLinearGradient(0,hz,0,h);g.addColorStop(0,day?"rgba(255,255,255,.045)":"rgba(255,255,255,.018)");g.addColorStop(.48,"rgba(0,0,0,0)");g.addColorStop(1,day?"rgba(0,0,0,.10)":"rgba(0,0,0,.18)");
+  c.save();poly(c,[...asphaltL,...asphaltR.slice().reverse()],g);c.restore()
+}
 function drawSidewalkDetails(c,w,h,hz,path,metrics,day){
   if(S.scene3d.quality==="LOW")return;
   const sides=[
@@ -2035,7 +2039,7 @@ function draw3D(d={}){
   const walkOuterL=offsetScreenPath(path,metrics.curbMin-metrics.sidewalkLeft,w,h,hz),curbL=offsetScreenPath(path,metrics.curbMin,w,h,hz),asphaltL=offsetScreenPath(path,metrics.asphaltMin,w,h,hz),asphaltR=offsetScreenPath(path,metrics.asphaltMax,w,h,hz),curbR=offsetScreenPath(path,metrics.curbMax,w,h,hz),walkOuterR=offsetScreenPath(path,metrics.curbMax+metrics.sidewalkRight,w,h,hz);
   if(metrics.sidewalkLeft>0)poly(c,[...walkOuterL,...curbL.slice().reverse()],day?"#9aa0a0":"#50595e");
   if(metrics.sidewalkRight>0)poly(c,[...curbR,...walkOuterR.slice().reverse()],day?"#9aa0a0":"#50595e");
-  poly(c,[...asphaltL,...asphaltR.slice().reverse()],roadSurfaceColor());
+  poly(c,[...asphaltL,...asphaltR.slice().reverse()],roadSurfaceColor());drawRoadPerspectiveShading(c,w,h,hz,asphaltL,asphaltR,day);
   if(metrics.cycleLeft.width>0)poly(c,[...curbL,...asphaltL.slice().reverse()],day?"#5b9177":"#315647");
   if(metrics.cycleRight.width>0)poly(c,[...asphaltR,...curbR.slice().reverse()],day?"#5b9177":"#315647");
   drawSidewalkDetails(c,w,h,hz,path,metrics,day);
