@@ -1728,22 +1728,30 @@ function drawMappedJunctions(c,w,h,hz,heading,path,metrics){
   }
 }
 function drawJunctionGeometry(c,w,h,hz,d,path,metrics){
-  if(!Number.isFinite(d.distance)||d.distance>155||d.arrived)return;
-  const p=screenAtForward(path,Math.max(10,d.distance),w,h,hz),left=p.x+metrics.asphaltMin*p.ppm,right=p.x+metrics.asphaltMax*p.ppm,half=Math.max(p.x-left,right-p.x),th=clamp(metrics.roadWidth*p.ppm*.72,10,56);
-  c.fillStyle="#191e21";
-  if(d.turn==="roundabout"){c.beginPath();c.arc(p.x,p.y,clamp(half*1.18,15,52),0,Math.PI*2);c.fill();c.strokeStyle="#d7dde0";c.lineWidth=2;c.stroke();c.fillStyle="#33423c";c.beginPath();c.arc(p.x,p.y,clamp(half*.46,6,22),0,Math.PI*2);c.fill()}
-  else if(d.turn==="left"||d.turn==="right"){const dir=d.turn==="right"?1:-1;c.fillRect(dir>0?left:0,p.y-th/2,dir>0?w-left:right,th);c.strokeStyle="#d7dde0";c.lineWidth=1.4;c.beginPath();c.moveTo(dir>0?left:0,p.y-th/2);c.lineTo(dir>0?w:right,p.y-th/2);c.moveTo(dir>0?left:0,p.y+th/2);c.lineTo(dir>0?w:right,p.y+th/2);c.stroke()}
+  if(!Number.isFinite(d.distance)||d.distance>165||d.arrived)return;
+  const distance=Math.max(12,d.distance),p=screenAtForward(path,distance,w,h,hz),left=screenAtForwardOffset(path,distance,metrics.asphaltMin,w,h,hz),right=screenAtForwardOffset(path,distance,metrics.asphaltMax,w,h,hz),half=Math.max(Math.abs(p.x-left.x),Math.abs(right.x-p.x)),th=clamp(metrics.roadWidth*p.ppm*.64,8,46);
+  if(d.turn==="roundabout"){
+    const rx=clamp(half*1.34,17,54),ry=clamp(rx*.34,7,20),road=clamp(rx*.36,6,15);
+    c.save();c.fillStyle=isDayScene()?"#343a3d":"#171d20";c.beginPath();c.ellipse(p.x,p.y,rx,ry,0,0,Math.PI*2);c.fill();
+    c.fillStyle=isDayScene()?"#617461":"#33493a";c.beginPath();c.ellipse(p.x,p.y,Math.max(4,rx-road),Math.max(3,ry-road*.42),0,0,Math.PI*2);c.fill();
+    c.strokeStyle="rgba(235,239,239,.70)";c.lineWidth=1.1;c.setLineDash([7,7]);c.beginPath();c.ellipse(p.x,p.y,rx-road*.48,ry-road*.18,0,0,Math.PI*2);c.stroke();
+    c.strokeStyle=isDayScene()?"rgba(215,220,219,.50)":"rgba(185,194,197,.42)";c.setLineDash([]);c.lineWidth=1;c.beginPath();c.ellipse(p.x,p.y,rx,ry,0,0,Math.PI*2);c.stroke();c.restore()
+  }else if(d.turn==="left"||d.turn==="right"){
+    const dir=d.turn==="right"?1:-1,edge=dir>0?right:left,outerX=dir>0?w:0,farY=p.y-th*.18,nearY=p.y+th*.18;
+    c.save();c.fillStyle=isDayScene()?"#343a3d":"#171d20";poly(c,[[edge.x,p.y-th*.48],[outerX,farY],[outerX,nearY],[edge.x,p.y+th*.48]],isDayScene()?"#343a3d":"#171d20");
+    c.strokeStyle="rgba(225,230,231,.58)";c.lineWidth=1;c.beginPath();c.moveTo(edge.x,p.y-th*.48);c.lineTo(outerX,farY);c.moveTo(edge.x,p.y+th*.48);c.lineTo(outerX,nearY);c.stroke();c.restore()
+  }
 }
 function drawDecisionRibbon(c,w,h,hz,d,path,total){
   const one=(turn,distance,secondary=false)=>{
     if(!Number.isFinite(distance)||distance<8||distance>255||!turn)return;
-    const p=screenAtForward(path,distance,w,h,hz),q=screenAtForward(path,Math.min(275,distance+42),w,h,hz),span=clamp(w*.19+p.ppm*10,42,w*.34);
-    c.save();c.strokeStyle=secondary?"rgba(72,235,143,.48)":"rgba(61,239,139,.92)";c.lineWidth=secondary?3:6;c.lineCap="round";c.lineJoin="round";c.setLineDash(secondary?[7,7]:[]);
+    const p=screenAtForward(path,distance,w,h,hz),q=screenAtForward(path,Math.min(285,distance+46),w,h,hz),span=clamp(w*.17+p.ppm*8,38,w*.31);
+    c.save();c.strokeStyle=secondary?"rgba(72,235,143,.38)":"rgba(61,239,139,.84)";c.lineWidth=secondary?2.2:4.2;c.lineCap="round";c.lineJoin="round";c.setLineDash(secondary?[7,8]:[]);
     c.beginPath();
-    if(turn==="right"){c.moveTo(q.x,q.y);c.quadraticCurveTo(p.x,p.y,p.x+span,p.y-2)}
-    else if(turn==="left"){c.moveTo(q.x,q.y);c.quadraticCurveTo(p.x,p.y,p.x-span,p.y-2)}
-    else if(turn==="uturn"){c.moveTo(q.x,q.y);c.quadraticCurveTo(p.x-span*.35,p.y-20,p.x-span*.15,p.y+18)}
-    else if(turn==="roundabout"){c.arc(p.x,p.y,clamp(p.ppm*6,10,32),Math.PI*.15,Math.PI*1.65)}
+    if(turn==="right"){c.moveTo(q.x,q.y);c.quadraticCurveTo(p.x,p.y,p.x+span,p.y-1)}
+    else if(turn==="left"){c.moveTo(q.x,q.y);c.quadraticCurveTo(p.x,p.y,p.x-span,p.y-1)}
+    else if(turn==="uturn"){c.moveTo(q.x,q.y);c.quadraticCurveTo(p.x-span*.30,p.y-17,p.x-span*.12,p.y+15)}
+    else if(turn==="roundabout"){const rx=clamp(p.ppm*7.2,13,34),ry=rx*.36;c.ellipse(p.x,p.y,rx,ry,0,Math.PI*.05,Math.PI*1.62,true)}
     else{c.moveTo(p.x,p.y);c.lineTo(q.x,q.y)}
     c.stroke();c.restore()
   };
