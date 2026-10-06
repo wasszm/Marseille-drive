@@ -1336,7 +1336,7 @@ function wakeDriveHud(ms=4300){
 }
 function setView(v){
   S.view=v;document.body.classList.toggle("drive-mode",v==="drive");if(v==="drive")wakeDriveHud();else{document.body.classList.remove("hud-sleep");clearTimeout(S.hudHideTimer)}
-  $("map").style.display=v==="map"?"block":"none";$("drive").style.display=v==="drive"?"block":"none";$("car").style.display=v==="drive"?"block":"none";
+  $("map").style.display=v==="map"?"block":"none";$("drive").style.display=v==="drive"?"block":"none";$("car").style.display="none";
   $("mapBtn").classList.toggle("active",v==="map");$("driveBtn").classList.toggle("active",v==="drive");
   $("modeLabel").textContent=`BETA 11 · ${v==="map"?"CARTE RÉELLE":"NAVIGATION 3D"}`;
   if(v==="map")setTimeout(()=>S.map.invalidateSize(),80);
