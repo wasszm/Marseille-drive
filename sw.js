@@ -1,5 +1,5 @@
-const CACHE="md-beta-10.0.0";
-const CORE=["./","./index.html","./styles.css?v=10.0.0","./app.js?v=10.0.0","./manifest.webmanifest?v=10","./icon.svg?v=10"];
+const CACHE="md-beta-11.0.0";
+const CORE=["./","./index.html","./styles.css?v=11.0.0","./app.js?v=11.0.0","./manifest.webmanifest?v=11.0","./icon.svg?v=11.0"];
 
 self.addEventListener("install",e=>{
   self.skipWaiting();
