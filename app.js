@@ -1687,10 +1687,8 @@ function drawRouteIntersections(c,w,h,hz,heading,path,metrics){
     const distance=it.along-along,p=screenAtForward(path,distance,w,h,hz),scale=p.ppm;
     it.bearings.forEach((b,i)=>{
       if(i===it.in)return;const rel=signedAngle(heading,b);if(Math.abs(rel)<18||Math.abs(rel)>168)return;
-      const reachable=it.entry?.[i]!==false,isOut=i===it.out,span=clamp(48+scale*13,46,w*.36),dx=Math.sin(rad(rel))*span,dy=-Math.cos(rad(rel))*span*.30,branchWidth=clamp(metrics.roadWidth*scale*.72,6,30);
-      c.save();c.strokeStyle=isOut?"rgba(52,75,66,.96)":reachable?(isDayScene()?"rgba(57,62,64,.97)":"rgba(24,30,34,.98)"):"rgba(90,95,98,.24)";c.lineWidth=isOut?branchWidth:branchWidth*.88;c.lineCap="round";c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke();
-      if(isOut){c.strokeStyle="rgba(80,244,150,.86)";c.lineWidth=Math.max(2,scale*.45);c.setLineDash([8,6]);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke()}
-      c.restore()
+      const reachable=it.entry?.[i]!==false,span=clamp(48+scale*13,46,w*.36),dx=Math.sin(rad(rel))*span,dy=-Math.cos(rad(rel))*span*.30,branchWidth=clamp(metrics.roadWidth*scale*.64,5,26);
+      c.save();c.strokeStyle=reachable?(isDayScene()?"rgba(54,59,61,.94)":"rgba(23,29,33,.96)"):"rgba(90,95,98,.18)";c.lineWidth=branchWidth;c.lineCap="round";c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x+dx,p.y+dy);c.stroke();c.restore()
     })
   }
 }
@@ -1995,7 +1993,7 @@ function draw3D(d={}){
   drawParkingBays(c,w,h,hz,path,metrics);
   drawCenterTreatment(c,w,h,hz,path,metrics);
   drawCurbs(c,w,h,hz,path,metrics);
-  drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);
+  drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);
   if(context.tunnel)drawTunnelShell(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
   if(context.bridge)drawBridgeRails(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
   drawPathLine(c,offsetScreenPath(path,metrics.driveMin,w,h,hz),"#edf0f0",1.8);drawPathLine(c,offsetScreenPath(path,metrics.driveMax,w,h,hz),"#edf0f0",1.8);
@@ -2015,7 +2013,7 @@ function draw3D(d={}){
   drawLaneCountTransition(c,w,h,hz,path,d,metrics);
   drawLaneGuidanceRibbon(c,w,h,hz,path,{...d,recommended:rec},metrics);
 
-  drawCrossings(c,w,h,hz,heading,path,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
+  drawCrossings(c,w,h,hz,heading,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
   drawMappedSignals(c,w,h,hz,heading,path,metrics);
   drawRoadFurniture(c,w,h,hz,heading,path,metrics);
   if(d.demo&&S.scene3d.quality!=="LOW"){const c1=metrics.centers[0]??-2,c2=metrics.centers[Math.min(1,metrics.centers.length-1)]??2;drawDemoVehicle(c,w,h,hz,path,c1,112,day);drawDemoVehicle(c,w,h,hz,path,c2,168,day)}
