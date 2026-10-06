@@ -1955,19 +1955,18 @@ function drawLaneCountTransition(c,w,h,hz,path,d,metrics){
   }
 }
 function drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics){
-  if(!Number.isFinite(d.distance)||d.distance<28||d.distance>230||metrics.total<2)return;
+  if(!Number.isFinite(d.distance)||d.distance<34||d.distance>200||metrics.total<2)return;
   const hasData=(d.turns||[]).some(Boolean)||(d.destinations||[]).some(Boolean);if(!hasData)return;
-  const anchor=screenAtForward(path,clamp(d.distance,55,155),w,h,hz),panelW=Math.min(w*.78,286),panelH=56,x=clamp(anchor.x-panelW/2,8,w-panelW-8),y=clamp(anchor.y-panelH-54,hz+12,h*.53);
-  c.save();c.fillStyle="rgba(7,14,18,.82)";c.fillRect(x,y,panelW,panelH);c.strokeStyle="rgba(255,255,255,.10)";c.lineWidth=1;c.strokeRect?.(x,y,panelW,panelH);
+  const anchor=screenAtForward(path,clamp(d.distance,72,175),w,h,hz),panelW=Math.min(w*.62,232),panelH=43,x=clamp(anchor.x-panelW/2,8,w-panelW-8),y=clamp(anchor.y-panelH-43,hz+8,h*.43);
+  c.save();c.fillStyle="rgba(5,12,15,.66)";c.fillRect(x,y,panelW,panelH);c.strokeStyle="rgba(255,255,255,.075)";c.lineWidth=.8;c.strokeRect?.(x,y,panelW,panelH);
   const cell=panelW/metrics.total;
   for(let i=0;i<metrics.total;i++){
     const recommended=(i+1)===(d.recommended||0),compatible=(d.compatible||[]).includes(i+1),cx=x+cell*(i+.5),turn=laneArrowTurn(d.turns?.[i],d.turn||"through"),dest=d.destinations?.[i]||"";
-    if(recommended){c.fillStyle="rgba(58,235,139,.18)";c.fillRect(x+i*cell+2,y+2,cell-4,panelH-4)}
-    c.fillStyle=recommended?"#75f0ad":compatible?"#eaf0ed":"#8c999f";c.font="900 19px -apple-system,Arial";c.textAlign="center";c.fillText(turnHudGlyph(turn),cx,y+23);
-    c.fillStyle=recommended?"#fff":"rgba(255,255,255,.68)";c.font="800 6px -apple-system,Arial";c.fillText(dest?dest.slice(0,13):`V${i+1}`,cx,y+39);
-    if(i<metrics.total-1){c.strokeStyle="rgba(255,255,255,.07)";c.beginPath();c.moveTo(x+(i+1)*cell,y+6);c.lineTo(x+(i+1)*cell,y+panelH-6);c.stroke()}
+    if(recommended){c.fillStyle="rgba(58,235,139,.14)";c.fillRect(x+i*cell+1,y+1,cell-2,panelH-2)}
+    c.fillStyle=recommended?"#75f0ad":compatible?"#eaf0ed":"#7e898e";c.font="900 15px -apple-system,Arial";c.textAlign="center";c.fillText(turnHudGlyph(turn),cx,y+18);
+    c.fillStyle=recommended?"rgba(255,255,255,.94)":"rgba(255,255,255,.58)";c.font="800 5.5px -apple-system,Arial";c.fillText(dest?dest.slice(0,12):`V${i+1}`,cx,y+31);
   }
-  c.fillStyle="rgba(255,255,255,.46)";c.font="800 6px -apple-system,Arial";c.textAlign="left";c.fillText(d.laneSource||"GUIDAGE",x+6,y+panelH-5);c.restore()
+  c.fillStyle="rgba(255,255,255,.34)";c.font="800 5px -apple-system,Arial";c.textAlign="left";c.fillText(d.laneSource||"GUIDAGE",x+5,y+panelH-4);c.restore()
 }
 function drawLaneGuidanceRibbon(c,w,h,hz,path,d,metrics){
   if(!metrics.centers.length)return;const left=[],right=[],center=[];
