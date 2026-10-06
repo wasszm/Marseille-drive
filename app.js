@@ -1729,12 +1729,13 @@ function drawDecisionRibbon(c,w,h,hz,d,path,total){
   };
   one(d.turn,d.distance,false);one(d.afterTurn,d.afterDistance,true)
 }
-function drawSignalHead(c,x,y,scale,experimental=null){
+function drawSignalHead(c,x,y,scale,state=null){
   const s=clamp(scale*.72,.75,6.2),poleH=clamp(5.4*s,11,42),boxW=clamp(1.55*s,5,10),boxH=clamp(4.5*s,14,29);
   c.save();c.strokeStyle="#697477";c.lineWidth=Math.max(.8,s*.26);c.beginPath();c.moveTo(x,y);c.lineTo(x,y-poleH);c.stroke();
   c.fillStyle="#111619";c.fillRect(x-boxW/2,y-poleH-boxH,boxW,boxH);
-  const lamps=[.20,.50,.80];for(const t of lamps){c.fillStyle="#566064";c.beginPath();c.arc(x,y-poleH-boxH+boxH*t,Math.max(1.4,boxW*.22),0,Math.PI*2);c.fill()}
-  if(experimental){const yy=experimental.type==="RED"?y-poleH-boxH+boxH*.20:y-poleH-boxH+boxH*.80;c.strokeStyle=experimental.type==="RED"?"rgba(255,90,90,.9)":"rgba(80,245,145,.9)";c.lineWidth=1.4;c.beginPath();c.arc(x,yy,Math.max(2,boxW*.31),0,Math.PI*2);c.stroke();c.fillStyle="#fff";c.font="900 6px -apple-system,Arial";c.textAlign="center";c.fillText("?",x+boxW*.72,yy+2)}
+  const lamps=[["RED",.20],["AMBER",.50],["GREEN",.80]];
+  for(const [name,t] of lamps){const active=state?.type===name;c.fillStyle=active?(name==="RED"?"#ef5555":name==="GREEN"?"#55df86":"#e1ad4a"):"#566064";if(active){c.globalAlpha=.18;c.beginPath();c.arc(x,y-poleH-boxH+boxH*t,Math.max(4,boxW*.62),0,Math.PI*2);c.fill();c.globalAlpha=1;c.fillStyle=name==="RED"?"#ef5555":name==="GREEN"?"#55df86":"#e1ad4a"}c.beginPath();c.arc(x,y-poleH-boxH+boxH*t,Math.max(1.4,boxW*.22),0,Math.PI*2);c.fill()}
+  if(state?.uncertain){const t=state.type==="RED"?.20:.80,yy=y-poleH-boxH+boxH*t;c.strokeStyle=state.type==="RED"?"rgba(255,90,90,.9)":"rgba(80,245,145,.9)";c.lineWidth=1.3;c.beginPath();c.arc(x,yy,Math.max(2.1,boxW*.32),0,Math.PI*2);c.stroke();c.fillStyle="#fff";c.font="900 6px -apple-system,Arial";c.textAlign="center";c.fillText("?",x+boxW*.72,yy+2)}
   c.restore()
 }
 function drawMappedSignals(c,w,h,hz,heading,path,metrics){
@@ -1743,7 +1744,7 @@ function drawMappedSignals(c,w,h,hz,heading,path,metrics){
   for(const sig of S.signals){const local=geoToLocal(pos,heading,sig);if(local.forward<8||local.forward>190||Math.abs(local.side)>55)continue;visible.push({sig,local})}
   visible.sort((a,b)=>b.local.forward-a.local.forward);
   for(const {sig,local} of visible.slice(0,S.scene3d.quality==="LOW"?3:7)){
-    const side=local.side===0?1:Math.sign(local.side),edge=side<0?metrics.asphaltMin:metrics.asphaltMax,drawSide=Math.abs(local.side)<Math.abs(edge)+.8?edge+side*1.05:local.side,p=roadScreenPoint({side:drawSide,forward:local.forward},w,h,hz),exp=S.visionSignalCue&&S.lastSignal?.id===sig.id?S.visionSignalCue:null;
+    const side=local.side===0?1:Math.sign(local.side),edge=side<0?metrics.asphaltMin:metrics.asphaltMax,drawSide=Math.abs(local.side)<Math.abs(edge)+.8?edge+side*1.05:local.side,p=roadScreenPoint({side:drawSide,forward:local.forward},w,h,hz),exp=S.visionSignalCue&&S.lastSignal?.id===sig.id?{...S.visionSignalCue,uncertain:true}:null;
     drawSignalHead(c,p.x,p.y,p.ppm,exp)
   }
 }
@@ -1780,7 +1781,7 @@ function drawRoadFurniture(c,w,h,hz,heading,path,metrics){
 }
 function drawDemoSignalPair(c,w,h,hz,path,metrics,count){
   const f=74,left=screenAtForwardOffset(path,f,metrics.curbMin-.7,w,h,hz),right=screenAtForwardOffset(path,f,metrics.curbMax+.7,w,h,hz);
-  drawSignalHead(c,left.x,left.y,left.ppm*.78,{type:"RED"});drawSignalHead(c,right.x,right.y,right.ppm*.78,{type:"RED"});
+  drawSignalHead(c,left.x,left.y,left.ppm*.78,{type:"RED",uncertain:false});drawSignalHead(c,right.x,right.y,right.ppm*.78,{type:"RED",uncertain:false});
   const mid=screenAtForward(path,f,w,h,hz);c.save();c.fillStyle="rgba(6,12,15,.66)";c.font="900 8px -apple-system,Arial";c.textAlign="center";c.fillText(`${Math.ceil(count)}s*`,mid.x,mid.y-9);c.restore()
 }
 function drawSignal(c,p,demoCount){
