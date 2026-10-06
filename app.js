@@ -1522,8 +1522,9 @@ function screenTangentAtForward(path,forward,w,h,hz){
   const i=pathIndexAtForward(path,forward),a=roadScreenPoint(path[Math.max(0,i-1)]||path[i],w,h,hz),b=roadScreenPoint(path[Math.min(path.length-1,i+1)]||path[i],w,h,hz);
   return Math.atan2(b.y-a.y,b.x-a.x)+Math.PI/2
 }
-function drawArrowOnPath(c,path,forward,offset,on,turn,w,h,hz){
-  const p=screenAtForwardOffset(path,forward,offset,w,h,hz),rot=screenTangentAtForward(path,forward,w,h,hz);c.save();c.translate(p.x,p.y);c.rotate(rot);arrow(c,0,0,on,turn);c.restore()
+function drawArrowOnPath(c,path,forward,offset,on,turn,w,h,hz,boost=1){
+  const p=screenAtForwardOffset(path,forward,offset,w,h,hz),rot=screenTangentAtForward(path,forward,w,h,hz),scale=clamp((p.ppm/8.2)*boost,.34,1);
+  c.save();c.translate(p.x,p.y);c.rotate(rot);c.scale(scale,scale);arrow(c,0,0,on,turn);c.restore()
 }
 function perspectiveEnvPoint(side,forward,w,h,hz){
   if(forward<=4||forward>(S.scene3d?.rangeM||280))return null;
@@ -2066,8 +2067,11 @@ function draw3D(d={}){
   drawMappedSignals(c,w,h,hz,heading,path,metrics);
   drawRoadFurniture(c,w,h,hz,heading,path,metrics);
   if(d.demo&&S.scene3d.quality!=="LOW"){const c1=metrics.centers[0]??-2,c2=metrics.centers[Math.min(1,metrics.centers.length-1)]??2;drawDemoVehicle(c,w,h,hz,path,c1,112,day);drawDemoVehicle(c,w,h,hz,path,c2,168,day)}
-  const arrowP=screenAtForward(path,18,w,h,hz);
-  for(let i=1;i<=total;i++){const lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");drawArrowOnPath(c,path,18,metrics.centers[i-1],i===rec,lt,w,h,hz)}
+  const arrowForward=24;
+  for(let i=1;i<=total;i++){const lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");drawArrowOnPath(c,path,arrowForward,metrics.centers[i-1],i===rec,lt,w,h,hz,1)}
+  if(Number.isFinite(d.distance)&&d.distance<170&&d.distance>72&&S.scene3d.quality!=="LOW"){
+    const f2=clamp(d.distance-34,58,118);for(let i=1;i<=total;i++){const lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");drawArrowOnPath(c,path,f2,metrics.centers[i-1],i===rec,lt,w,h,hz,.8)}
+  }
   if(d.target&&d.target!==rec&&metrics.centers[d.target-1]!==undefined){const tp=screenAtForwardOffset(path,42,metrics.centers[d.target-1],w,h,hz),tx=tp.x;c.fillStyle="rgba(220,255,235,.86)";c.font="900 7px -apple-system,Arial";c.textAlign="center";c.fillText("CIBLE",tx,tp.y)}
   if(S.scene3d.quality==="HIGH"&&Array.isArray(d.destinations)){const lp=screenAtForward(path,28,w,h,hz);for(let i=0;i<Math.min(total,d.destinations.length);i++){const txt=d.destinations[i];if(!txt)continue;const pp=screenAtForwardOffset(path,28,metrics.centers[i],w,h,hz),x=pp.x;c.fillStyle="rgba(255,255,255,.68)";c.font="800 6px -apple-system,Arial";c.textAlign="center";c.fillText(txt.slice(0,12),x,lp.y+15)}}
   drawSceneLabels(c,w,h,hz,path,d,metrics);
