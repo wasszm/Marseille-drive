@@ -1844,14 +1844,26 @@ function specialLaneIndexes(kind,total){
   const yes=v=>/yes|designated|permissive|official/.test(String(v).toLowerCase());
   return vals.map((v,i)=>yes(v)?i+1:null).filter(Boolean)
 }
-function drawTunnelShell(c,w,h,hz,path,roadHalf){
-  const near=screenAtForward(path,12,w,h,hz),far=screenAtForward(path,250,w,h,hz);
-  const nearHalf=(roadHalf+2.2)*near.ppm,farHalf=(roadHalf+2.2)*far.ppm;
-  c.fillStyle="#171b1e";poly(c,[[0,hz],[far.x-farHalf,far.y],[near.x-nearHalf,near.y],[0,h]],"#202529");poly(c,[[w,hz],[far.x+farHalf,far.y],[near.x+nearHalf,near.y],[w,h]],"#202529");
-  c.strokeStyle="rgba(220,225,225,.22)";c.lineWidth=2;for(let f=40;f<250;f+=45){const p=screenAtForward(path,f,w,h,hz),half=(roadHalf+1.8)*p.ppm;c.beginPath();c.arc(p.x,p.y,half,Math.PI,Math.PI*2);c.stroke()}
+function drawTunnelShell(c,w,h,hz,path,metrics){
+  const leftOff=metrics.curbMin-1.7,rightOff=metrics.curbMax+1.7,left=offsetScreenPath(path,leftOff,w,h,hz),right=offsetScreenPath(path,rightOff,w,h,hz);
+  if(left.length<2||right.length<2)return;
+  const lf=left[left.length-1],rf=right[right.length-1],ln=left[0],rn=right[0];
+  poly(c,[[0,hz],[lf[0],lf[1]],...left.slice().reverse(),[0,h]],"#202529");poly(c,[[w,hz],[rf[0],rf[1]],...right.slice().reverse(),[w,h]],"#202529");
+  c.save();c.strokeStyle="rgba(220,225,225,.18)";c.lineWidth=1.5;
+  for(let f=38;f<Math.min(260,S.scene3d.rangeM);f+=38){
+    const l=screenAtForwardOffset(path,f,leftOff,w,h,hz),r=screenAtForwardOffset(path,f,rightOff,w,h,hz),mid=screenAtForward(path,f,w,h,hz),rise=clamp((r.x-l.x)*.34,8,38);
+    c.beginPath();c.moveTo(l.x,l.y);c.quadraticCurveTo(mid.x,Math.min(l.y,r.y)-rise,r.x,r.y);c.stroke();
+    if(S.scene3d.quality!=="LOW"){c.fillStyle="rgba(245,232,170,.50)";c.beginPath();c.ellipse(mid.x,Math.min(l.y,r.y)-rise+3,clamp(mid.ppm*.55,1.2,3.2),clamp(mid.ppm*.18,.7,1.5),0,0,Math.PI*2);c.fill()}
+  }
+  c.strokeStyle="rgba(200,205,207,.28)";c.lineWidth=1;drawPathLine(c,left,"rgba(200,205,207,.28)",1);drawPathLine(c,right,"rgba(200,205,207,.28)",1);c.restore()
 }
-function drawBridgeRails(c,w,h,hz,path,roadHalf){
-  for(const side of [-1,1]){const pts=offsetScreenPath(path,side*(roadHalf+1.15),w,h,hz);drawPathLine(c,pts,"#c3c9cc",2);const inner=offsetScreenPath(path,side*(roadHalf+.82),w,h,hz);drawPathLine(c,inner,"rgba(190,198,202,.55)",1)}
+function drawBridgeRails(c,w,h,hz,path,metrics){
+  const specs=[{off:metrics.curbMin-.85,side:-1},{off:metrics.curbMax+.85,side:1}];
+  for(const spec of specs){
+    const pts=offsetScreenPath(path,spec.off,w,h,hz);drawPathLine(c,pts,"rgba(205,213,216,.88)",1.8);
+    const inner=offsetScreenPath(path,spec.off-spec.side*.28,w,h,hz);drawPathLine(c,inner,"rgba(170,182,187,.48)",.9);
+    if(S.scene3d.quality!=="LOW")for(let f=18;f<150;f+=14){const p=screenAtForwardOffset(path,f,spec.off,w,h,hz),hh=clamp(p.ppm*.42,2,7);c.strokeStyle="rgba(195,205,208,.72)";c.lineWidth=.8;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-hh);c.stroke()}
+  }
 }
 function roadSideTag(tags,key,side,dir){
   const physical=dir==="backward"?(side==="left"?"right":"left"):side;
@@ -2031,8 +2043,8 @@ function draw3D(d={}){
   drawCenterTreatment(c,w,h,hz,path,metrics);
   drawCurbs(c,w,h,hz,path,metrics);
   drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);
-  if(context.tunnel)drawTunnelShell(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
-  if(context.bridge)drawBridgeRails(c,w,h,hz,path,Math.max(Math.abs(metrics.asphaltMin),Math.abs(metrics.asphaltMax)));
+  if(context.tunnel)drawTunnelShell(c,w,h,hz,path,metrics);
+  if(context.bridge)drawBridgeRails(c,w,h,hz,path,metrics);
   drawPathLine(c,offsetScreenPath(path,metrics.driveMin,w,h,hz),"#edf0f0",1.8);drawPathLine(c,offsetScreenPath(path,metrics.driveMax,w,h,hz),"#edf0f0",1.8);
 
   const bus=[...new Set([...specialLaneIndexes("bus",total),...specialLaneIndexes("psv",total)])],access=Array.isArray(d.accessible)&&d.accessible.length===total?d.accessible:Array.from({length:total},()=>true);
