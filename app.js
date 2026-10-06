@@ -1985,21 +1985,9 @@ function guidanceOffsetAtForward(d,metrics,forward){
   return off
 }
 function drawEgoMarker(c,w,h,d){
-  const x=w/2,y=h-37;c.save();c.translate(x,y);c.fillStyle="rgba(5,12,15,.74)";c.beginPath();c.arc(0,0,20,0,Math.PI*2);c.fill();
-  c.fillStyle=d.tight?"#ffb14c":"#f6f8f7";c.beginPath();c.moveTo(0,-14);c.lineTo(10,11);c.lineTo(0,7);c.lineTo(-10,11);c.closePath();c.fill();
-  c.strokeStyle="rgba(70,235,145,.8)";c.lineWidth=2;c.beginPath();c.arc(0,0,17,-Math.PI*.82,-Math.PI*.18);c.stroke();c.restore()
-}
-function drawLaneCountTransition(c,w,h,hz,path,d,metrics){
-  const future=Number(d.hintTotal),current=metrics.total,distance=Number(d.hintDistance);if(!Number.isFinite(future)||!Number.isFinite(distance)||future===current||distance<28||distance>245)return;
-  const diff=future-current,side=d.turn==="left"?-1:1,startF=clamp(distance-105,18,170),endF=clamp(distance,45,235),base=side<0?metrics.driveMin:metrics.driveMax,delta=Math.abs(diff)*CFG.laneWidthM;
-  if(diff>0){
-    const aP=screenAtForwardOffset(path,startF,base,w,h,hz),bP=screenAtForwardOffset(path,endF,base,w,h,hz),cP=screenAtForwardOffset(path,endF,base+side*delta,w,h,hz),dP=screenAtForwardOffset(path,startF,base+side*.08,w,h,hz),a=[aP.x,aP.y],b=[bP.x,bP.y],c2=[cP.x,cP.y],d2=[dP.x,dP.y];
-    c.save();c.globalAlpha=.96;poly(c,[a,b,c2,d2],roadSurfaceColor());c.globalAlpha=1;
-    for(let k=1;k<=diff;k++){const frac=k/diff,offEnd=base+side*delta*frac,eP=screenAtForwardOffset(path,endF,offEnd,w,h,hz);c.strokeStyle="rgba(226,232,234,.72)";c.lineWidth=1.3;c.setLineDash([7,9]);c.beginPath();c.moveTo(aP.x,aP.y);c.lineTo(eP.x,eP.y);c.stroke()}c.restore()
-  }else{
-    const count=Math.abs(diff),inner=base-side*count*CFG.laneWidthM;c.save();c.strokeStyle="rgba(235,238,238,.48)";c.lineWidth=1.2;
-    for(let k=0;k<7;k++){const t=k/7,f=startF+(endF-startF)*t,edge=base+(inner-base)*t,p1=screenAtForwardOffset(path,f,edge,w,h,hz),p2=screenAtForwardOffset(path,f,edge-side*CFG.laneWidthM*.7,w,h,hz);c.beginPath();c.moveTo(p1.x,p1.y);c.lineTo(p2.x,p2.y);c.stroke()}c.restore()
-  }
+  const x=w/2,y=h-31;c.save();c.translate(x,y);c.fillStyle="rgba(5,12,15,.54)";c.beginPath();c.arc(0,0,15,0,Math.PI*2);c.fill();
+  c.fillStyle=d.tight?"#ffb14c":"#f6f8f7";c.beginPath();c.moveTo(0,-10);c.lineTo(7.5,8);c.lineTo(0,5.5);c.lineTo(-7.5,8);c.closePath();c.fill();
+  c.strokeStyle="rgba(70,235,145,.72)";c.lineWidth=1.5;c.beginPath();c.arc(0,0,12.5,-Math.PI*.82,-Math.PI*.18);c.stroke();c.restore()
 }
 function drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics){
   if(!Number.isFinite(d.distance)||d.distance<34||d.distance>200||metrics.total<2)return;
