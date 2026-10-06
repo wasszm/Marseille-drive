@@ -1586,6 +1586,22 @@ function osmRoofColor(tags,day){
   if(/slate/.test(material))return day?"#667078":"#394248";
   return day?"#a7b0b2":"#586368"
 }
+function polygonCenterScreen(points){
+  if(!points?.length)return{x:0,y:0};const q=points.reduce((a,p)=>({x:a.x+p.x,y:a.y+p.y}),{x:0,y:0});return{x:q.x/points.length,y:q.y/points.length}
+}
+function drawRoofShape(c,top,tags,day,avgPpm){
+  const shape=String(tags?.["roof:shape"]||"flat").toLowerCase();if(shape==="flat"||top.length<3)return;
+  const center=polygonCenterScreen(top),roofH=parseMeters(tags?.["roof:height"])||(/pyramidal|hipped/.test(shape)?2.2:1.6),peak={x:center.x,y:center.y-clamp(roofH*avgPpm*.42,2,13)},fill=osmRoofColor(tags,day);
+  c.save();
+  if(/pyramidal|hipped|conical/.test(shape)){
+    for(let i=0;i<top.length;i++){const j=(i+1)%top.length,c1=top[i],c2=top[j],shade=i%2?0.88:1;c.globalAlpha=shade;poly(c,[[c1.x,c1.y],[c2.x,c2.y],[peak.x,peak.y]],fill)}
+    c.globalAlpha=1;c.strokeStyle=day?"rgba(55,55,50,.24)":"rgba(225,225,215,.12)";c.lineWidth=.7;for(const p of top){c.beginPath();c.moveTo(p.x,p.y);c.lineTo(peak.x,peak.y);c.stroke()}
+  }else if(/gabled|saltbox|skillion/.test(shape)&&top.length>=4){
+    const a=top[0],b=top[Math.floor(top.length/2)],ridgeA={x:(a.x+peak.x)/2,y:(a.y+peak.y)/2},ridgeB={x:(b.x+peak.x)/2,y:(b.y+peak.y)/2};
+    c.strokeStyle=day?"rgba(55,55,50,.35)":"rgba(225,225,215,.18)";c.lineWidth=1;c.beginPath();c.moveTo(ridgeA.x,ridgeA.y);c.lineTo(ridgeB.x,ridgeB.y);c.stroke()
+  }
+  c.restore()
+}
 function facePoint(face,u,v){
   const bx=face.a.x+(face.b.x-face.a.x)*u,by=face.a.y+(face.b.y-face.a.y)*u,tx=face.ta.x+(face.tb.x-face.ta.x)*u,ty=face.ta.y+(face.tb.y-face.ta.y)*u;
   return{x:bx+(tx-bx)*v,y:by+(ty-by)*v}
@@ -1623,7 +1639,7 @@ function drawExtrudedBuilding(c,o,pos,heading,w,h,hz,day){
     c.save();c.globalAlpha=shade;c.fillStyle="#000";c.beginPath();face.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.fill();c.restore();
     drawFacadeWindows(c,face,day,S.scene3d.buildingDetail,Number(o.id)%11)
   }
-  poly(c,top.map(p=>[p.x,p.y]),roof);
+  poly(c,top.map(p=>[p.x,p.y]),roof);drawRoofShape(c,top,o.tags,day,top.reduce((a,p)=>a+(p.ppm||0),0)/Math.max(1,top.length));
   if(S.scene3d.buildingDetail>0){c.save();c.strokeStyle=day?"rgba(60,70,74,.22)":"rgba(210,220,222,.11)";c.lineWidth=.8;c.beginPath();top.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.stroke();c.restore()}
   if(o.name&&base.some(p=>p.ppm>2.8)&&S.scene3d.quality==="HIGH"){const near=base.reduce((a,b)=>a.forward<b.forward?a:b),hp=buildingHeightPixels(o,near,h);c.fillStyle="rgba(255,255,255,.82)";c.font="800 7px -apple-system,Arial";c.textAlign="center";c.fillText(o.name.slice(0,16),near.x,near.y-hp-3)}
   return true
