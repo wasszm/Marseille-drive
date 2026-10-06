@@ -1510,18 +1510,31 @@ function perspectiveEnvPoint(side,forward,w,h,hz){
   if(forward<=4||forward>(S.scene3d?.rangeM||280))return null;
   return roadScreenPoint({side,forward},w,h,hz)
 }
+function drawDemoBuilding(c,w,h,hz,b,i,day){
+  const p=roadScreenPoint({side:b.s,forward:b.f},w,h,hz),bw=clamp(b.w*p.ppm*.58,7,72),bh=clamp(b.h*p.ppm*.50,9,h*.25),dir=b.s<0?1:-1,depth=clamp(bw*.14,2,10),fac=day?(i%4===0?"#a79b8d":i%3===0?"#938f88":"#879398"):(i%3===0?"#514a44":"#3e494e"),side=day?"#6e7779":"#30393d",roof=day?"#8a7b70":"#45413e";
+  c.fillStyle=side;poly(c,[[p.x+bw/2*dir,p.y],[p.x+bw/2*dir+depth*dir,p.y-depth*.35],[p.x+bw/2*dir+depth*dir,p.y-bh-depth*.35],[p.x+bw/2*dir,p.y-bh]],side);
+  c.fillStyle=fac;c.fillRect(p.x-bw/2,p.y-bh,bw,bh);
+  c.fillStyle=roof;poly(c,[[p.x-bw/2,p.y-bh],[p.x-bw/2+depth*dir,p.y-bh-depth*.35],[p.x+bw/2+depth*dir,p.y-bh-depth*.35],[p.x+bw/2,p.y-bh]],roof);
+  if(S.scene3d.buildingDetail>0&&bw>15){
+    const cols=clamp(Math.floor(bw/15),2,5),rows=clamp(Math.floor(bh/15),2,6);
+    for(let r=0;r<rows;r++)for(let col=0;col<cols;col++){const wx=p.x-bw*.38+col*(bw*.76/Math.max(1,cols-1)),wy=p.y-bh+bh*(r+1)/(rows+1),ww=clamp(bw*.055,1.2,3.2),wh=clamp(bh*.045,1.2,3.3);c.fillStyle=day?"rgba(52,70,79,.48)":((r+col+i)%5===0?"rgba(236,211,140,.64)":"rgba(130,149,157,.22)");c.fillRect(wx-ww/2,wy-wh/2,ww,wh)}
+    if(bw>34&&bh>42){c.strokeStyle=day?"rgba(65,67,66,.26)":"rgba(195,205,207,.12)";c.lineWidth=.7;for(let r=2;r<rows;r+=2){const yy=p.y-bh+bh*(r+.25)/(rows+1);c.beginPath();c.moveTo(p.x-bw*.42,yy);c.lineTo(p.x+bw*.42,yy);c.stroke()}}
+  }
+}
+function drawDemoVehicle(c,w,h,hz,path,laneOffset,forward,day){
+  const p=screenAtForwardOffset(path,forward,laneOffset,w,h,hz),sc=clamp(p.ppm,.7,4.5),vw=clamp(1.75*sc,3.5,15),vh=clamp(4.2*sc*.42,4,15);
+  c.save();c.fillStyle=day?"#4c5b63":"#222b30";c.beginPath();c.roundRect?.(p.x-vw/2,p.y-vh,vw,vh,2);if(c.roundRect)c.fill();else c.fillRect(p.x-vw/2,p.y-vh,vw,vh);
+  c.fillStyle=day?"#8ca2ad":"#566b75";c.fillRect(p.x-vw*.30,p.y-vh*.78,vw*.60,vh*.30);c.fillStyle="#b94e4c";c.fillRect(p.x-vw*.34,p.y-2,vw*.17,1.5);c.fillRect(p.x+vw*.17,p.y-2,vw*.17,1.5);c.restore()
+}
 function drawFallbackCity(c,w,h,hz){
   const day=isDayScene(),rows=[
-    {f:48,s:-17,w:11,h:16},{f:60,s:18,w:10,h:20},{f:78,s:-20,w:13,h:24},{f:92,s:21,w:12,h:18},
-    {f:118,s:-22,w:14,h:28},{f:138,s:23,w:15,h:23},{f:168,s:-25,w:17,h:31},{f:196,s:27,w:18,h:26},{f:228,s:-30,w:20,h:34},{f:245,s:31,w:18,h:29}
+    {f:42,s:-24,w:10,h:14},{f:54,s:25,w:11,h:17},{f:70,s:-27,w:12,h:18},{f:84,s:28,w:10,h:15},
+    {f:104,s:-30,w:13,h:22},{f:123,s:31,w:14,h:20},{f:147,s:-33,w:15,h:24},{f:170,s:35,w:16,h:22},
+    {f:202,s:-38,w:18,h:26},{f:228,s:39,w:18,h:24},{f:260,s:-42,w:20,h:29},{f:282,s:43,w:19,h:27}
   ];
-  for(const [i,b] of rows.entries()){
-    const p=roadScreenPoint({side:b.s,forward:b.f},w,h,hz),bw=clamp(b.w*p.ppm,9,100),bh=clamp(b.h*p.ppm*.72,12,h*.34),fac=day?(i%3===0?"#9a8f85":"#818e92"):(i%3===0?"#504944":"#3c484e");
-    c.fillStyle=fac;c.fillRect(p.x-bw/2,p.y-bh,bw,bh);c.fillStyle=day?"#687276":"#283238";c.beginPath();c.moveTo(p.x-bw/2,p.y-bh);c.lineTo(p.x-bw*.34,p.y-bh-4);c.lineTo(p.x+bw*.42,p.y-bh-4);c.lineTo(p.x+bw/2,p.y-bh);c.fill();
-    if(S.scene3d.buildingDetail>0&&bw>18){c.fillStyle=day?"rgba(55,73,82,.45)":"rgba(230,210,140,.28)";const cols=Math.min(4,Math.max(2,Math.floor(bw/24))),rs=Math.min(5,Math.max(2,Math.floor(bh/18)));for(let rr=1;rr<=rs;rr++)for(let cc=1;cc<=cols;cc++)c.fillRect(p.x-bw*.38+cc*(bw*.76/(cols+1))-1.5,p.y-bh+rr*(bh*.78/(rs+1)),3,2)}
-  }
-  for(let i=0;i<8;i++){const f=35+i*22,side=i%2?-12.5:12.5,p=roadScreenPoint({side,forward:f},w,h,hz),th=clamp(4.6*p.ppm,7,36),cr=clamp(1.9*p.ppm,3,10);c.strokeStyle="#324139";c.lineWidth=2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-th*.55);c.stroke();c.fillStyle=day?"#4b7658":"#385545";c.beginPath();c.arc(p.x,p.y-th*.72,cr,0,Math.PI*2);c.fill()}
-  for(let i=0;i<7;i++){const f=28+i*29,side=i%2?-9.8:9.8,p=roadScreenPoint({side,forward:f},w,h,hz),lh=clamp(5.5*p.ppm,8,42);c.strokeStyle="#6f7a80";c.lineWidth=1.2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-lh);c.stroke();c.fillStyle="#e5e5c8";c.beginPath();c.arc(p.x,p.y-lh,2,0,Math.PI*2);c.fill()}
+  for(let i=rows.length-1;i>=0;i--)drawDemoBuilding(c,w,h,hz,rows[i],i,day);
+  for(let i=0;i<9;i++){const f=38+i*24,side=i%2?-15.5:15.5,p=roadScreenPoint({side,forward:f},w,h,hz),th=clamp(4.6*p.ppm,6,28),cr=clamp(1.7*p.ppm,2.5,8);c.strokeStyle="#324139";c.lineWidth=clamp(p.ppm*.12,.8,1.7);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-th*.55);c.stroke();c.fillStyle=day?"#4b7658":"#385545";c.beginPath();c.arc(p.x,p.y-th*.72,cr,0,Math.PI*2);c.fill();if(S.scene3d.buildingDetail>0){c.beginPath();c.arc(p.x-cr*.55,p.y-th*.70,cr*.62,0,Math.PI*2);c.arc(p.x+cr*.50,p.y-th*.75,cr*.58,0,Math.PI*2);c.fill()}}
+  for(let i=0;i<7;i++){const f=32+i*31,side=i%2?-12:12,p=roadScreenPoint({side,forward:f},w,h,hz),lh=clamp(4.5*p.ppm,7,28);c.strokeStyle="#6f7a80";c.lineWidth=1;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x,p.y-lh);c.stroke();c.fillStyle="#e5e5c8";c.beginPath();c.arc(p.x,p.y-lh,1.6,0,Math.PI*2);c.fill()}
 }
 function osmFacadeColor(tags,day){
   const raw=String(tags?.["building:colour"]||tags?.["building:color"]||"").trim();
@@ -1982,6 +1995,7 @@ function draw3D(d={}){
   drawCrossings(c,w,h,hz,heading,metrics);drawRouteIntersections(c,w,h,hz,heading,path,metrics);drawMappedJunctions(c,w,h,hz,heading,path,metrics);drawJunctionGeometry(c,w,h,hz,d,path,metrics);drawDecisionRibbon(c,w,h,hz,d,path,metrics);drawLaneGuidanceBoard(c,w,h,hz,path,d,metrics);
   drawMappedSignals(c,w,h,hz,heading,path,metrics);
   drawRoadFurniture(c,w,h,hz,heading,path,metrics);
+  if(d.demo&&S.scene3d.quality!=="LOW"){const c1=metrics.centers[0]??-2,c2=metrics.centers[Math.min(1,metrics.centers.length-1)]??2;drawDemoVehicle(c,w,h,hz,path,c1,112,day);drawDemoVehicle(c,w,h,hz,path,c2,168,day)}
   const arrowP=screenAtForward(path,18,w,h,hz);
   for(let i=1;i<=total;i++){const ap=screenAtForwardOffset(path,18,metrics.centers[i-1],w,h,hz),lt=laneArrowTurn(d.turns?.[i-1],d.turn||"through");arrow(c,ap.x,Math.min(h*.73,ap.y),i===rec,lt)}
   if(d.target&&d.target!==rec&&metrics.centers[d.target-1]!==undefined){const tp=screenAtForwardOffset(path,42,metrics.centers[d.target-1],w,h,hz),tx=tp.x;c.fillStyle="rgba(220,255,235,.86)";c.font="900 7px -apple-system,Arial";c.textAlign="center";c.fillText("CIBLE",tx,tp.y)}
