@@ -229,3 +229,5 @@ body.drive-mode.hud-sleep .status{opacity:0;pointer-events:none}
 body.drive-mode.hud-sleep .maneuver-hud{top:61px}
 body.drive-mode.hud-sleep .speed-limit{top:63px}
 body.drive-mode.hud-sleep .fusion-badge{top:110px}
+
+body.drive-mode.hud-sleep .fusion-badge{opacity:0;pointer-events:none}
